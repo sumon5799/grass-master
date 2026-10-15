@@ -23,7 +23,7 @@ const FENCE_POST_SPACING: float = 4.0
 var ground_body: StaticBody3D
 var boundary_body: StaticBody3D
 var vegetation_root: Node3D
-var mower_placeholder: Node3D
+var mower_placeholder: CharacterBody3D
 
 var plant_type_counts: Dictionary = {
 	"short_grass": 0,

@@ -1,18 +1,54 @@
-extends Node3D
+extends CharacterBody3D
 class_name MowerPlaceholder
 
-## Original low-poly stylized lawnmower placeholder for Step 3.
-## Includes chassis, blade deck, wheels, handle bar, and visual cutter ring.
-## Step 4 will attach full movement, turning, collision, and camera follow.
+## Step 4 — Playable 3D Lawnmower Controller & Visuals.
+## Implements smooth analog/8-direction movement, smooth heading turn, boost,
+## physics collision response against garden boundaries, wheel spin, subtle engine
+## vibration, and external touch joystick / swipe input hooks.
 
 const GardenMaterialsScript := preload("res://project/materials/garden_materials.gd")
 
+@export var base_move_speed: float = 8.5
+@export var boost_multiplier: float = 1.55
+@export var acceleration: float = 18.0
+@export var friction: float = 16.0
+@export var turn_speed: float = 10.5
+@export var collision_radius: float = 0.92
+@export var arena_limit: float = 15.05
+
 var body_root: Node3D
 var cutter_indicator: MeshInstance3D
+var collision_shape: CollisionShape3D
+var wheels: Array[MeshInstance3D] = []
+
+# External mobile touch/joystick input state
+var touch_input_vector: Vector2 = Vector2.ZERO
+var touch_boost_pressed: bool = false
+
+# Runtime telemetry for HUD and automated tests
+var current_speed: float = 0.0
+var is_boosting: bool = false
+var last_input_vector: Vector2 = Vector2.ZERO
+var boundary_hit_count: int = 0
+var _vibration_time: float = 0.0
 
 func _ready() -> void:
 	name = "MowerPlaceholder"
+	motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
+	floor_stop_on_slope = true
+	wall_min_slide_angle = 0.05
+	_build_collision_shape()
 	_build_mower_mesh()
+
+func _build_collision_shape() -> void:
+	collision_shape = CollisionShape3D.new()
+	collision_shape.name = "MowerCollisionShape"
+	var cyl_shape := CylinderShape3D.new()
+	cyl_shape.radius = collision_radius
+	cyl_shape.height = 1.20
+	collision_shape.shape = cyl_shape
+	collision_shape.position = Vector3(0.0, 0.60, 0.0)
+	add_child(collision_shape)
 
 func _build_mower_mesh() -> void:
 	body_root = Node3D.new()
@@ -41,6 +77,16 @@ func _build_mower_mesh() -> void:
 	chassis.position = Vector3(0.0, 0.52, 0.05)
 	chassis.material_override = GardenMaterialsScript.get_material("mower_body")
 	body_root.add_child(chassis)
+
+	# Front direction nose marker (points toward -Z local forward)
+	var nose := MeshInstance3D.new()
+	nose.name = "FrontBumper"
+	var nose_mesh := BoxMesh.new()
+	nose_mesh.size = Vector3(0.76, 0.18, 0.26)
+	nose.mesh = nose_mesh
+	nose.position = Vector3(0.0, 0.30, -0.78)
+	nose.material_override = GardenMaterialsScript.get_material("mower_dark")
+	body_root.add_child(nose)
 
 	# Top engine cap
 	var cap := MeshInstance3D.new()
@@ -91,6 +137,7 @@ func _build_mower_mesh() -> void:
 	body_root.add_child(crossbar)
 
 	# 4 Low-poly wheels
+	wheels.clear()
 	var wheel_mesh := CylinderMesh.new()
 	wheel_mesh.top_radius = 0.24
 	wheel_mesh.bottom_radius = 0.24
@@ -111,6 +158,7 @@ func _build_mower_mesh() -> void:
 		wheel.rotation_degrees = Vector3(0.0, 0.0, 90.0)
 		wheel.material_override = GardenMaterialsScript.get_material("mower_dark")
 		body_root.add_child(wheel)
+		wheels.append(wheel)
 
 	# Subtle cutter radius ring near ground
 	cutter_indicator = MeshInstance3D.new()
@@ -124,3 +172,83 @@ func _build_mower_mesh() -> void:
 	cutter_indicator.position = Vector3(0.0, 0.05, 0.0)
 	cutter_indicator.material_override = GardenMaterialsScript.get_material("mower_blade_ring")
 	body_root.add_child(cutter_indicator)
+
+func set_touch_input(vec: Vector2) -> void:
+	if vec.length() > 1.0:
+		touch_input_vector = vec.normalized()
+	else:
+		touch_input_vector = vec
+
+func set_touch_boost(active: bool) -> void:
+	touch_boost_pressed = active
+
+func get_combined_input_vector() -> Vector2:
+	var kb_vec := Vector2(
+		Input.get_action_strength("turn_right") - Input.get_action_strength("turn_left"),
+		Input.get_action_strength("move_backward") - Input.get_action_strength("move_forward")
+	)
+	var combined := kb_vec + touch_input_vector
+	if combined.length() > 1.0:
+		combined = combined.normalized()
+	return combined
+
+func _physics_process(delta: float) -> void:
+	step_movement(delta)
+
+func step_movement(delta: float) -> void:
+	var input_vec := get_combined_input_vector()
+	last_input_vector = input_vec
+	is_boosting = Input.is_action_pressed("boost") or touch_boost_pressed
+
+	var max_speed := base_move_speed * (boost_multiplier if is_boosting else 1.0)
+	var desired_dir := Vector3(input_vec.x, 0.0, input_vec.y)
+
+	if desired_dir.length_squared() > 0.001:
+		var target_vel := desired_dir * max_speed
+		velocity.x = move_toward(velocity.x, target_vel.x, acceleration * delta)
+		velocity.z = move_toward(velocity.z, target_vel.z, acceleration * delta)
+
+		# Smoothly turn mower body toward movement direction (-Z is local forward)
+		var target_yaw := atan2(-desired_dir.x, -desired_dir.z)
+		rotation.y = lerp_angle(rotation.y, target_yaw, clampf(turn_speed * delta, 0.0, 1.0))
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, friction * delta)
+		velocity.z = move_toward(velocity.z, 0.0, friction * delta)
+
+	# Keep mower grounded on the lawn plane
+	if not is_on_floor():
+		velocity.y = -9.8
+	else:
+		velocity.y = 0.0
+
+	move_and_slide()
+
+	# Count wall collisions and enforce hard safety clamp inside garden boundaries
+	for i in range(get_slide_collision_count()):
+		var col := get_slide_collision(i)
+		if col and absf(col.get_normal().y) < 0.4:
+			boundary_hit_count += 1
+
+	if absf(global_position.x) > arena_limit or absf(global_position.z) > arena_limit:
+		global_position.x = clampf(global_position.x, -arena_limit, arena_limit)
+		global_position.z = clampf(global_position.z, -arena_limit, arena_limit)
+		boundary_hit_count += 1
+
+	if global_position.y < 0.0:
+		global_position.y = 0.0
+
+	current_speed = Vector2(velocity.x, velocity.z).length()
+	_animate_mower_visuals(delta)
+
+func _animate_mower_visuals(delta: float) -> void:
+	if body_root == null:
+		return
+
+	_vibration_time += delta * (28.0 if current_speed > 0.2 else 10.0)
+	var vib_amp := 0.012 if current_speed > 0.2 else 0.003
+	body_root.position.y = sin(_vibration_time) * vib_amp
+
+	if cutter_indicator:
+		cutter_indicator.rotate_y(delta * (6.0 if is_boosting else 3.2))
+		var ring_scale := 1.06 if is_boosting else 1.0
+		cutter_indicator.scale = Vector3(ring_scale, 1.0, ring_scale)
