@@ -1,13 +1,13 @@
 extends Control
 class_name GameLoopOverlayHUD
 
-## Step 6 & Step 7 — Core Game Loop + Unlocks, Unlimited Resources & Creative Mode UI Overlay.
+## Step 6, Step 7 & Step 8 — In-Game HUD, Quick Tuning, Pause & Level Complete Overlay.
 ## Provides:
 ## - Top-left Objective Tracker checklist + progress bar + timer (or Creative/Relax Zen banner)
-## - Top-right Quick Actions: Creative Mode Toggle, Mower Strength / Unlocks Modal Button, Restart, Pause (>= 48dp touch targets)
-## - Center Modal Mower Strength & Unlocks Configurator (All Levels selectable, Unlimited Resources ∞, Speed/Radius/Power/Boost sliders)
-## - Center Modal Pause Overlay (Resume, Restart Level)
-## - Center Modal Level Complete Overlay (Stars, Stats, Play Again / Restart, Keep Mowing 100%)
+## - Top-right Quick Actions: Main Menu, Creative Mode Toggle, Unlocks & Tuning, Restart, Pause (>= 48dp touch targets)
+## - Center Modal Pause Overlay (Resume, Restart Level, Garage, Settings, Main Menu)
+## - Center Modal Level Complete Overlay (Stars, Stats, Play Again / Restart, Keep Mowing 100%, Level Select)
+## - Responsive layout & large-text accessibility scaling
 
 signal pause_requested()
 signal resume_requested()
@@ -17,12 +17,19 @@ signal creative_mode_toggled(enabled: bool)
 signal level_selected(level_id: String)
 signal strength_changed(move_speed: float, cutting_radius: float, blade_power: int, boost_mult: float)
 signal regrow_garden_requested()
+signal main_menu_requested()
+signal garage_requested()
+signal settings_requested()
+signal level_select_requested()
 
+var objective_panel: PanelContainer
 var objective_title_label: Label
 var timer_label: Label
 var overall_progress_bar: ProgressBar
 var checklist_vbox: VBoxContainer
 
+var top_right_hbox: HBoxContainer
+var menu_top_button: Button
 var creative_toggle_button: Button
 var tuning_open_button: Button
 var pause_top_button: Button
@@ -42,6 +49,9 @@ var level_buttons_hbox: HBoxContainer
 var pause_modal_backdrop: ColorRect
 var resume_button: Button
 var pause_restart_button: Button
+var pause_garage_button: Button
+var pause_settings_button: Button
+var pause_main_menu_button: Button
 
 var complete_modal_backdrop: ColorRect
 var complete_title_label: Label
@@ -49,6 +59,7 @@ var complete_stars_label: Label
 var complete_stats_label: Label
 var complete_restart_button: Button
 var complete_keep_mowing_button: Button
+var complete_level_select_button: Button
 
 func _ready() -> void:
 	name = "GameLoopOverlayHUD"
@@ -62,15 +73,15 @@ func _ready() -> void:
 	_build_complete_modal()
 
 func _build_objective_panel() -> void:
-	var panel := PanelContainer.new()
-	panel.name = "ObjectiveTrackerPanel"
-	panel.anchor_left = 0.0
-	panel.anchor_top = 0.0
-	panel.offset_left = 24.0
-	panel.offset_top = 92.0
-	panel.offset_right = 384.0
-	panel.offset_bottom = 296.0
-	panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	objective_panel = PanelContainer.new()
+	objective_panel.name = "ObjectiveTrackerPanel"
+	objective_panel.anchor_left = 0.0
+	objective_panel.anchor_top = 0.0
+	objective_panel.offset_left = 24.0
+	objective_panel.offset_top = 92.0
+	objective_panel.offset_right = 388.0
+	objective_panel.offset_bottom = 298.0
+	objective_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.06, 0.14, 0.08, 0.82)
@@ -81,12 +92,12 @@ func _build_objective_panel() -> void:
 	style.content_margin_right = 14.0
 	style.content_margin_top = 10.0
 	style.content_margin_bottom = 10.0
-	panel.add_theme_stylebox_override("panel", style)
-	add_child(panel)
+	objective_panel.add_theme_stylebox_override("panel", style)
+	add_child(objective_panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
-	panel.add_child(vbox)
+	objective_panel.add_child(vbox)
 
 	var header_row := HBoxContainer.new()
 	vbox.add_child(header_row)
@@ -120,45 +131,52 @@ func _build_objective_panel() -> void:
 	vbox.add_child(checklist_vbox)
 
 func _build_top_right_buttons() -> void:
-	var top_right := HBoxContainer.new()
-	top_right.name = "TopRightLoopButtons"
-	top_right.anchor_left = 1.0
-	top_right.anchor_right = 1.0
-	top_right.offset_left = -560.0
-	top_right.offset_top = 92.0
-	top_right.offset_right = -24.0
-	top_right.offset_bottom = 148.0
-	top_right.alignment = BoxContainer.ALIGNMENT_END
-	top_right.add_theme_constant_override("separation", 8)
-	add_child(top_right)
+	top_right_hbox = HBoxContainer.new()
+	top_right_hbox.name = "TopRightLoopButtons"
+	top_right_hbox.anchor_left = 1.0
+	top_right_hbox.anchor_right = 1.0
+	top_right_hbox.offset_left = -660.0
+	top_right_hbox.offset_top = 92.0
+	top_right_hbox.offset_right = -24.0
+	top_right_hbox.offset_bottom = 148.0
+	top_right_hbox.alignment = BoxContainer.ALIGNMENT_END
+	top_right_hbox.add_theme_constant_override("separation", 8)
+	add_child(top_right_hbox)
+
+	menu_top_button = Button.new()
+	menu_top_button.name = "MainMenuTopButton"
+	menu_top_button.text = "Menu"
+	menu_top_button.custom_minimum_size = Vector2(88.0, 52.0)
+	menu_top_button.pressed.connect(func() -> void: main_menu_requested.emit())
+	top_right_hbox.add_child(menu_top_button)
 
 	creative_toggle_button = Button.new()
 	creative_toggle_button.name = "CreativeModeButton"
 	creative_toggle_button.text = "Mode: Normal"
-	creative_toggle_button.custom_minimum_size = Vector2(142.0, 52.0)
+	creative_toggle_button.custom_minimum_size = Vector2(138.0, 52.0)
 	creative_toggle_button.pressed.connect(_on_creative_button_pressed)
-	top_right.add_child(creative_toggle_button)
+	top_right_hbox.add_child(creative_toggle_button)
 
 	tuning_open_button = Button.new()
 	tuning_open_button.name = "MowerStrengthButton"
 	tuning_open_button.text = "Unlocks & Tuning"
-	tuning_open_button.custom_minimum_size = Vector2(148.0, 52.0)
+	tuning_open_button.custom_minimum_size = Vector2(142.0, 52.0)
 	tuning_open_button.pressed.connect(func() -> void: set_tuning_modal_visible(true))
-	top_right.add_child(tuning_open_button)
+	top_right_hbox.add_child(tuning_open_button)
 
 	restart_top_button = Button.new()
 	restart_top_button.name = "QuickRestartButton"
 	restart_top_button.text = "Restart"
-	restart_top_button.custom_minimum_size = Vector2(102.0, 52.0)
+	restart_top_button.custom_minimum_size = Vector2(96.0, 52.0)
 	restart_top_button.pressed.connect(func() -> void: restart_requested.emit())
-	top_right.add_child(restart_top_button)
+	top_right_hbox.add_child(restart_top_button)
 
 	pause_top_button = Button.new()
 	pause_top_button.name = "PauseButton"
 	pause_top_button.text = "Pause"
-	pause_top_button.custom_minimum_size = Vector2(102.0, 52.0)
+	pause_top_button.custom_minimum_size = Vector2(96.0, 52.0)
 	pause_top_button.pressed.connect(func() -> void: pause_requested.emit())
-	top_right.add_child(pause_top_button)
+	top_right_hbox.add_child(pause_top_button)
 
 func _build_tuning_modal() -> void:
 	tuning_modal_backdrop = ColorRect.new()
@@ -206,7 +224,6 @@ func _build_tuning_modal() -> void:
 	unlock_badge.add_theme_color_override("font_color", Color(0.62, 0.98, 0.56))
 	vbox.add_child(unlock_badge)
 
-	# All-level quick selector row
 	var lvl_label := Label.new()
 	lvl_label.text = "Select Any Unlocked Level:"
 	lvl_label.add_theme_font_size_override("font_size", 14)
@@ -232,7 +249,6 @@ func _build_tuning_modal() -> void:
 		)
 		level_buttons_hbox.add_child(btn)
 
-	# Configurable mower strength sliders (clamped to safe ranges)
 	speed_slider = _add_slider_row(vbox, "Move Speed (m/s):", 4.0, 16.0, 0.5, 8.5, "speed")
 	radius_slider = _add_slider_row(vbox, "Cutting Radius (m):", 0.85, 3.20, 0.05, 1.45, "radius")
 	power_slider = _add_slider_row(vbox, "Blade Power (1-5):", 1.0, 5.0, 1.0, 3.0, "power")
@@ -360,7 +376,7 @@ func _build_pause_modal() -> void:
 	pause_modal_backdrop = ColorRect.new()
 	pause_modal_backdrop.name = "PauseModalBackdrop"
 	pause_modal_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pause_modal_backdrop.color = Color(0.02, 0.06, 0.03, 0.72)
+	pause_modal_backdrop.color = Color(0.02, 0.06, 0.03, 0.76)
 	pause_modal_backdrop.visible = false
 	pause_modal_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(pause_modal_backdrop)
@@ -371,7 +387,7 @@ func _build_pause_modal() -> void:
 
 	var card := PanelContainer.new()
 	card.name = "PauseCard"
-	card.custom_minimum_size = Vector2(420.0, 260.0)
+	card.custom_minimum_size = Vector2(460.0, 380.0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.09, 0.19, 0.11, 0.96)
 	style.border_color = Color(0.52, 0.90, 0.44, 0.95)
@@ -379,43 +395,64 @@ func _build_pause_modal() -> void:
 	style.set_corner_radius_all(14)
 	style.content_margin_left = 28.0
 	style.content_margin_right = 28.0
-	style.content_margin_top = 24.0
-	style.content_margin_bottom = 24.0
+	style.content_margin_top = 22.0
+	style.content_margin_bottom = 22.0
 	card.add_theme_stylebox_override("panel", style)
 	center.add_child(card)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 14)
+	vbox.add_theme_constant_override("separation", 10)
 	card.add_child(vbox)
 
 	var title := Label.new()
 	title.text = "GAME PAUSED"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", Color(0.95, 1.0, 0.92))
 	vbox.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Take a breather or restart the garden."
+	subtitle.text = "Take a breather, tune your mower, or switch levels."
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 14)
+	subtitle.add_theme_font_size_override("font_size", 13)
 	subtitle.add_theme_color_override("font_color", Color(0.78, 0.92, 0.74))
 	vbox.add_child(subtitle)
 
 	resume_button = Button.new()
 	resume_button.name = "ResumeButton"
 	resume_button.text = "Resume Game"
-	resume_button.custom_minimum_size = Vector2(260.0, 56.0)
+	resume_button.custom_minimum_size = Vector2(280.0, 50.0)
 	resume_button.pressed.connect(func() -> void: resume_requested.emit())
 	vbox.add_child(resume_button)
 
 	pause_restart_button = Button.new()
 	pause_restart_button.name = "PauseRestartButton"
 	pause_restart_button.text = "Restart Level"
-	pause_restart_button.custom_minimum_size = Vector2(260.0, 56.0)
+	pause_restart_button.custom_minimum_size = Vector2(280.0, 48.0)
 	pause_restart_button.pressed.connect(func() -> void: restart_requested.emit())
 	vbox.add_child(pause_restart_button)
+
+	pause_garage_button = Button.new()
+	pause_garage_button.name = "PauseGarageButton"
+	pause_garage_button.text = "Garage & Upgrades"
+	pause_garage_button.custom_minimum_size = Vector2(280.0, 48.0)
+	pause_garage_button.pressed.connect(func() -> void: garage_requested.emit())
+	vbox.add_child(pause_garage_button)
+
+	pause_settings_button = Button.new()
+	pause_settings_button.name = "PauseSettingsButton"
+	pause_settings_button.text = "Settings & Save"
+	pause_settings_button.custom_minimum_size = Vector2(280.0, 48.0)
+	pause_settings_button.pressed.connect(func() -> void: settings_requested.emit())
+	vbox.add_child(pause_settings_button)
+
+	pause_main_menu_button = Button.new()
+	pause_main_menu_button.name = "PauseMainMenuButton"
+	pause_main_menu_button.text = "Main Menu"
+	pause_main_menu_button.custom_minimum_size = Vector2(280.0, 48.0)
+	pause_main_menu_button.pressed.connect(func() -> void: main_menu_requested.emit())
+	vbox.add_child(pause_main_menu_button)
 
 func _build_complete_modal() -> void:
 	complete_modal_backdrop = ColorRect.new()
@@ -432,7 +469,7 @@ func _build_complete_modal() -> void:
 
 	var card := PanelContainer.new()
 	card.name = "LevelCompleteCard"
-	card.custom_minimum_size = Vector2(460.0, 320.0)
+	card.custom_minimum_size = Vector2(540.0, 330.0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.10, 0.22, 0.12, 0.97)
 	style.border_color = Color(0.95, 0.82, 0.28, 0.98)
@@ -476,22 +513,29 @@ func _build_complete_modal() -> void:
 
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 14)
+	btn_row.add_theme_constant_override("separation", 12)
 	vbox.add_child(btn_row)
 
 	complete_keep_mowing_button = Button.new()
 	complete_keep_mowing_button.name = "KeepMowingButton"
 	complete_keep_mowing_button.text = "Keep Mowing (100%)"
-	complete_keep_mowing_button.custom_minimum_size = Vector2(190.0, 56.0)
+	complete_keep_mowing_button.custom_minimum_size = Vector2(165.0, 54.0)
 	complete_keep_mowing_button.pressed.connect(func() -> void: keep_mowing_requested.emit())
 	btn_row.add_child(complete_keep_mowing_button)
 
 	complete_restart_button = Button.new()
 	complete_restart_button.name = "CompleteRestartButton"
 	complete_restart_button.text = "Play Again"
-	complete_restart_button.custom_minimum_size = Vector2(190.0, 56.0)
+	complete_restart_button.custom_minimum_size = Vector2(145.0, 54.0)
 	complete_restart_button.pressed.connect(func() -> void: restart_requested.emit())
 	btn_row.add_child(complete_restart_button)
+
+	complete_level_select_button = Button.new()
+	complete_level_select_button.name = "CompleteLevelSelectButton"
+	complete_level_select_button.text = "Level Select"
+	complete_level_select_button.custom_minimum_size = Vector2(150.0, 54.0)
+	complete_level_select_button.pressed.connect(func() -> void: level_select_requested.emit())
+	btn_row.add_child(complete_level_select_button)
 
 func update_objectives_display(
 	level_title: String,
@@ -601,3 +645,17 @@ func show_level_complete_modal(
 func hide_level_complete_modal() -> void:
 	if complete_modal_backdrop:
 		complete_modal_backdrop.visible = false
+
+func apply_responsive_layout(viewport_size: Vector2, text_scale: float = 1.0) -> void:
+	var aspect: float = viewport_size.x / maxf(viewport_size.y, 1.0)
+	var safe_inset: float = 48.0 if aspect >= 2.0 else 24.0
+	if objective_panel:
+		objective_panel.offset_left = safe_inset
+		objective_panel.offset_right = safe_inset + 368.0
+	if top_right_hbox:
+		top_right_hbox.offset_right = -safe_inset
+		top_right_hbox.offset_left = -safe_inset - 630.0
+	if objective_title_label:
+		objective_title_label.add_theme_font_size_override("font_size", int(round(15.0 * text_scale)))
+	if timer_label:
+		timer_label.add_theme_font_size_override("font_size", int(round(14.0 * text_scale)))

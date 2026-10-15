@@ -1,10 +1,10 @@
 extends CharacterBody3D
 class_name MowerPlaceholder
 
-## Step 4 & Step 5 — Playable 3D Lawnmower Controller & Visuals.
+## Step 4, Step 5 & Step 8 — Playable 3D Lawnmower Controller & Customizable Visuals.
 ## Implements smooth analog/8-direction movement, smooth heading turn, boost,
 ## physics collision response against garden boundaries, wheel spin, subtle engine
-## vibration, cutting radius configuration, and cut flash feedback.
+## vibration, cutting radius configuration, cut flash feedback, and Garage mower/skin visual styling.
 
 const GardenMaterialsScript := preload("res://project/materials/garden_materials.gd")
 
@@ -19,9 +19,14 @@ const GardenMaterialsScript := preload("res://project/materials/garden_materials
 @export var arena_limit: float = 15.05
 
 var body_root: Node3D
+var deck_mesh_node: MeshInstance3D
+var chassis_mesh_node: MeshInstance3D
 var collision_shape: CollisionShape3D
 var cutter_indicator: MeshInstance3D
 var wheels: Array[MeshInstance3D] = []
+
+var active_mower_type: String = "standard_rotary"
+var active_skin_id: String = "emerald_classic"
 
 var touch_input_vector: Vector2 = Vector2.ZERO
 var touch_boost_pressed: bool = false
@@ -56,27 +61,27 @@ func _build_mower_mesh() -> void:
 	add_child(body_root)
 
 	# Cutting deck base
-	var deck := MeshInstance3D.new()
-	deck.name = "CuttingDeck"
+	deck_mesh_node = MeshInstance3D.new()
+	deck_mesh_node.name = "CuttingDeck"
 	var deck_mesh := CylinderMesh.new()
 	deck_mesh.top_radius = 0.85
 	deck_mesh.bottom_radius = 0.92
 	deck_mesh.height = 0.26
 	deck_mesh.radial_segments = 16
-	deck.mesh = deck_mesh
-	deck.position = Vector3(0.0, 0.22, 0.0)
-	deck.material_override = GardenMaterialsScript.get_material("mower_deck")
-	body_root.add_child(deck)
+	deck_mesh_node.mesh = deck_mesh
+	deck_mesh_node.position = Vector3(0.0, 0.22, 0.0)
+	deck_mesh_node.material_override = GardenMaterialsScript.get_material("mower_deck")
+	body_root.add_child(deck_mesh_node)
 
 	# Upper engine housing
-	var chassis := MeshInstance3D.new()
-	chassis.name = "EngineChassis"
+	chassis_mesh_node = MeshInstance3D.new()
+	chassis_mesh_node.name = "EngineChassis"
 	var chassis_mesh := BoxMesh.new()
 	chassis_mesh.size = Vector3(1.05, 0.42, 1.25)
-	chassis.mesh = chassis_mesh
-	chassis.position = Vector3(0.0, 0.52, 0.05)
-	chassis.material_override = GardenMaterialsScript.get_material("mower_body")
-	body_root.add_child(chassis)
+	chassis_mesh_node.mesh = chassis_mesh
+	chassis_mesh_node.position = Vector3(0.0, 0.52, 0.05)
+	chassis_mesh_node.material_override = GardenMaterialsScript.get_material("mower_body")
+	body_root.add_child(chassis_mesh_node)
 
 	# Front direction nose marker (points toward -Z local forward)
 	var nose := MeshInstance3D.new()
@@ -172,6 +177,54 @@ func _build_mower_mesh() -> void:
 	cutter_indicator.position = Vector3(0.0, 0.05, 0.0)
 	cutter_indicator.material_override = GardenMaterialsScript.get_material("mower_blade_ring")
 	body_root.add_child(cutter_indicator)
+
+func apply_visual_customization(mower_type: String, skin_id: String) -> void:
+	active_mower_type = mower_type
+	active_skin_id = skin_id
+	if chassis_mesh_node == null or deck_mesh_node == null:
+		return
+
+	var chassis_mat := StandardMaterial3D.new()
+	chassis_mat.roughness = 0.40
+	chassis_mat.metallic = 0.20
+
+	var deck_mat := StandardMaterial3D.new()
+	deck_mat.roughness = 0.45
+	deck_mat.metallic = 0.15
+
+	match skin_id:
+		"emerald_classic":
+			chassis_mat.albedo_color = Color(0.18, 0.78, 0.34)
+			deck_mat.albedo_color = Color(0.95, 0.80, 0.20)
+		"sunlit_gold":
+			chassis_mat.albedo_color = Color(0.98, 0.78, 0.16)
+			deck_mat.albedo_color = Color(0.24, 0.64, 0.28)
+		"cobalt_breeze":
+			chassis_mat.albedo_color = Color(0.20, 0.56, 0.96)
+			deck_mat.albedo_color = Color(0.88, 0.94, 1.0)
+		"crimson_blazer":
+			chassis_mat.albedo_color = Color(0.92, 0.24, 0.18)
+			deck_mat.albedo_color = Color(0.98, 0.76, 0.16)
+		_:
+			chassis_mat.albedo_color = Color(0.18, 0.78, 0.34)
+			deck_mat.albedo_color = Color(0.95, 0.80, 0.20)
+
+	chassis_mesh_node.material_override = chassis_mat
+	deck_mesh_node.material_override = deck_mat
+
+	match mower_type:
+		"twin_blade_pro":
+			deck_mesh_node.scale = Vector3(1.08, 1.0, 1.08)
+			chassis_mesh_node.scale = Vector3(1.02, 1.05, 1.02)
+		"turbo_hover_deck":
+			deck_mesh_node.scale = Vector3(1.12, 0.85, 1.12)
+			chassis_mesh_node.scale = Vector3(0.96, 0.92, 1.08)
+		"heavy_topiary_sculptor":
+			deck_mesh_node.scale = Vector3(1.15, 1.15, 1.15)
+			chassis_mesh_node.scale = Vector3(1.10, 1.12, 1.08)
+		_:
+			deck_mesh_node.scale = Vector3.ONE
+			chassis_mesh_node.scale = Vector3.ONE
 
 func set_touch_input(vec: Vector2) -> void:
 	if vec.length() > 1.0:

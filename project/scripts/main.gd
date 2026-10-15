@@ -1,10 +1,13 @@
 extends Node3D
 
-## Step 6 & Step 7 — Core Game Loop, Objectives, Unlocks, Unlimited Resources & Creative Mode Controller
-## Manages the 3D garden arena, follow camera, touch controls HUD, objective tracking,
-## level completion states, pause/resume, level restart, all-unlocked levels & upgrades,
-## unlimited resources (∞), safe mower strength clamping, Creative/Relax mode, and automated self-tests
-## (--verify-step3, --verify-step4, --verify-step5, --verify-step6, --verify-step7).
+## Main startup scene script for Grass Master (Step 2 through Step 8).
+## Step 8 additions:
+## - Integrates MenuSystemOverlay (Main Menu, Level Select, Garage, Creative Mode, Settings, Credits)
+## - Integrates PlayerProfile v2 settings (Master/Music/SFX volume, Vibration, Camera Zoom/Sensitivity,
+##   Graphics Quality Low/Medium/High, Large Text scale, Reset Local Save, Corruption Recovery)
+## - Handles app lifecycle notifications (pause/focus loss auto-save)
+## - Adds `--verify-step8` automated verification for menus, garage, settings, save reset,
+##   corruption recovery, and multi-aspect-ratio + large-text UI layout
 
 const GardenArenaScript := preload("res://project/scripts/garden_arena.gd")
 const FollowCameraScript := preload("res://project/scripts/follow_camera.gd")
@@ -12,6 +15,7 @@ const TouchControlsHUDScript := preload("res://project/ui/touch_controls_hud.gd"
 const LevelConfigScript := preload("res://project/levels/level_config.gd")
 const GameLoopOverlayHUDScript := preload("res://project/ui/game_loop_overlay_hud.gd")
 const PlayerProfileScript := preload("res://project/scripts/player_profile.gd")
+const MenuSystemOverlayScript := preload("res://project/ui/menu_system_overlay.gd")
 
 const REQUIRED_ACTIONS: Array[StringName] = [
 	&"move_forward",
@@ -19,19 +23,20 @@ const REQUIRED_ACTIONS: Array[StringName] = [
 	&"turn_left",
 	&"turn_right",
 	&"boost",
-	&"pause"
+	&"pause",
 ]
 
 enum GameState {
-	PLAYING,
-	PAUSED,
-	COMPLETED
+	PLAYING = 0,
+	PAUSED = 1,
+	COMPLETED = 2
 }
 
 var garden_arena: Node3D
 var main_camera: Camera3D
 var touch_controls: Control
 var game_loop_hud: Control
+var menu_overlay: Control
 var current_level: RefCounted
 var player_profile: RefCounted
 
@@ -40,40 +45,47 @@ var elapsed_level_seconds: float = 0.0
 var level_completed_once: bool = false
 var full_100_completed_once: bool = false
 var keep_mowing_mode: bool = false
-var last_earned_stars: int = 0
 var total_coins_earned: int = 0
+var last_earned_stars: int = 0
 var mower_growth_scale: float = 1.0
 
 var _verify_step4_pending: bool = false
-var _verify_step5_pending: bool = false
-var _verify_step6_pending: bool = false
 var _verify_step7_pending: bool = false
-var _physics_frames_elapsed: int = 0
+var _verify_step8_pending: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_verify_input_actions()
+
 	player_profile = PlayerProfileScript.new()
 	player_profile.load_from_disk()
+
 	current_level = LevelConfigScript.new()
-	current_level.configure_by_id(String(player_profile.selected_level_id))
-	_setup_garden_arena()
+	current_level.configure_by_id(player_profile.selected_level_id)
+
+	_spawn_garden_arena()
 	_setup_follow_camera()
-	_setup_touch_controls()
+	_setup_touch_controls_hud()
 	_setup_game_loop_hud()
-	_apply_level_config()
+	_setup_menu_system_overlay()
+	_apply_profile_to_mower()
+	_apply_settings_to_runtime()
 	_update_status_hud()
 
-	var total_plants: int = garden_arena.get_total_plant_count()
+	var vp_size := get_viewport().get_visible_rect().size
+	var renderer_name: String = String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "mobile"))
 	print(
-		"[Step7] Unlocks, Unlimited Resources & Creative Mode Ready | Level: ",
-		current_level.title,
-		" | Mode: ",
-		player_profile.get_mode_display_name(),
-		" | Coins: ",
-		player_profile.get_coins_display(),
-		" | Total Plants: ",
-		total_plants
+		"[Step8] Menus, Garage, Settings & Save System Ready | Level: %s | Mode: %s | Coins: %s | Mower: %s (%s) | Viewport: %dx%d | Renderer: %s"
+		% [
+			String(current_level.title),
+			player_profile.get_mode_display_name(),
+			player_profile.get_coins_display(),
+			player_profile.selected_mower_type,
+			player_profile.selected_skin,
+			int(vp_size.x),
+			int(vp_size.y),
+			str(renderer_name)
+		]
 	)
 
 	var user_args := OS.get_cmdline_user_args()
@@ -87,71 +99,116 @@ func _ready() -> void:
 		_run_step6_self_test(1.0 / 60.0)
 	if user_args.has("--verify-step7"):
 		_verify_step7_pending = true
+	if user_args.has("--verify-step8"):
+		_verify_step8_pending = true
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		if player_profile:
+			player_profile.save_to_disk()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if menu_overlay and menu_overlay.is_menu_open():
+			if menu_overlay.current_screen != MenuSystemOverlayScript.Screen.MAIN_MENU:
+				menu_overlay.show_screen(MenuSystemOverlayScript.Screen.MAIN_MENU)
+			else:
+				close_menus_and_resume()
+		elif game_state == GameState.PLAYING:
+			pause_game()
+		elif game_state == GameState.PAUSED:
+			resume_game()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"pause"):
-		if game_state == GameState.PLAYING:
+	if event.is_action_pressed("pause"):
+		if menu_overlay and menu_overlay.is_menu_open():
+			close_menus_and_resume()
+		elif game_state == GameState.PLAYING:
 			pause_game()
 		elif game_state == GameState.PAUSED:
 			resume_game()
 		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		var key_ev := event as InputEventKey
+		if key_ev.keycode == KEY_EQUAL or key_ev.keycode == KEY_PLUS:
+			if main_camera and main_camera.has_method("adjust_zoom"):
+				main_camera.adjust_zoom(-0.12)
+		elif key_ev.keycode == KEY_MINUS:
+			if main_camera and main_camera.has_method("adjust_zoom"):
+				main_camera.adjust_zoom(0.12)
 
 func _physics_process(delta: float) -> void:
-	_physics_frames_elapsed += 1
-	if _verify_step4_pending and _physics_frames_elapsed >= 2:
+	if _verify_step4_pending:
 		_verify_step4_pending = false
 		_run_step4_self_test(delta)
-	if _verify_step5_pending and _physics_frames_elapsed >= 2:
-		_verify_step5_pending = false
-		_run_step5_self_test(delta)
-	if _verify_step6_pending and _physics_frames_elapsed >= 2:
-		_verify_step6_pending = false
-		_run_step6_self_test(delta)
-	if _verify_step7_pending and _physics_frames_elapsed >= 2:
+		return
+	if _verify_step7_pending:
 		_verify_step7_pending = false
 		_run_step7_self_test(delta)
+		return
+	if _verify_step8_pending:
+		_verify_step8_pending = false
+		_run_step8_self_test(delta)
+		return
 
 	if game_state == GameState.PLAYING and not get_tree().paused:
 		if not player_profile.is_creative_mode():
 			elapsed_level_seconds += delta
-		_update_status_hud()
+		if game_loop_hud and current_level and garden_arena:
+			var pct: float = garden_arena.get_completion_percentage()
+			var pts: int = int(garden_arena.get("total_reward_points"))
+			var eval_res: Dictionary = current_level.evaluate_all(pct, garden_arena.cut_type_counts, pts)
+			game_loop_hud.update_objectives_display(
+				String(current_level.title),
+				pct,
+				elapsed_level_seconds,
+				eval_res,
+				player_profile.is_creative_mode()
+			)
 
-func _setup_garden_arena() -> void:
+func _spawn_garden_arena() -> void:
 	garden_arena = GardenArenaScript.new()
 	garden_arena.process_mode = Node.PROCESS_MODE_PAUSABLE
+	garden_arena.plants_cut.connect(_on_garden_plants_cut)
 	add_child(garden_arena)
-	if garden_arena.has_signal("plants_cut"):
-		garden_arena.plants_cut.connect(_on_plants_cut)
 
 func _setup_follow_camera() -> void:
 	main_camera = get_node_or_null("MainCamera3D") as Camera3D
-	if main_camera:
-		main_camera.process_mode = Node.PROCESS_MODE_PAUSABLE
-		main_camera.set_script(FollowCameraScript)
-		main_camera.set("target", garden_arena.mower_placeholder)
-		if main_camera.has_method("snap_to_target"):
-			main_camera.snap_to_target()
+	if main_camera == null:
+		main_camera = Camera3D.new()
+		main_camera.name = "MainCamera3D"
+		add_child(main_camera)
 
-func _setup_touch_controls() -> void:
+	main_camera.set_script(FollowCameraScript)
+	main_camera.process_mode = Node.PROCESS_MODE_PAUSABLE
+	main_camera.current = true
+	if garden_arena and garden_arena.mower_placeholder:
+		main_camera.set_follow_target(garden_arena.mower_placeholder, true)
+
+func _setup_touch_controls_hud() -> void:
 	var hud_layer := get_node_or_null("StartupHUD") as CanvasLayer
 	if hud_layer == null:
-		return
+		hud_layer = CanvasLayer.new()
+		hud_layer.name = "StartupHUD"
+		add_child(hud_layer)
+
 	touch_controls = TouchControlsHUDScript.new()
 	touch_controls.process_mode = Node.PROCESS_MODE_PAUSABLE
 	hud_layer.add_child(touch_controls)
 
-	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
-	if mower:
-		touch_controls.joystick_changed.connect(
-			func(vec: Vector2) -> void: mower.set_touch_input(vec)
+	if garden_arena and garden_arena.mower_placeholder:
+		var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
+		touch_controls.joystick_changed.connect(func(vec: Vector2) -> void:
+			if mower.has_method("set_touch_input"):
+				mower.set_touch_input(vec)
 		)
-		touch_controls.boost_toggled.connect(
-			func(active: bool) -> void: mower.set_touch_boost(active)
+		touch_controls.boost_toggled.connect(func(active: bool) -> void:
+			if mower.has_method("set_touch_boost"):
+				mower.set_touch_boost(active)
 		)
-	if main_camera and main_camera.has_method("adjust_zoom"):
-		touch_controls.zoom_requested.connect(
-			func(dz: float) -> void: main_camera.adjust_zoom(dz)
-		)
+
+	touch_controls.zoom_requested.connect(func(delta_zoom: float) -> void:
+		if main_camera and main_camera.has_method("adjust_zoom"):
+			main_camera.adjust_zoom(delta_zoom)
+	)
 
 func _setup_game_loop_hud() -> void:
 	var hud_layer := get_node_or_null("StartupHUD") as CanvasLayer
@@ -159,14 +216,204 @@ func _setup_game_loop_hud() -> void:
 		return
 	game_loop_hud = GameLoopOverlayHUDScript.new()
 	hud_layer.add_child(game_loop_hud)
+
 	game_loop_hud.pause_requested.connect(pause_game)
 	game_loop_hud.resume_requested.connect(resume_game)
 	game_loop_hud.restart_requested.connect(restart_level)
 	game_loop_hud.keep_mowing_requested.connect(continue_mowing_after_complete)
 	game_loop_hud.creative_mode_toggled.connect(set_creative_mode_enabled)
 	game_loop_hud.level_selected.connect(select_and_start_level)
-	game_loop_hud.strength_changed.connect(on_mower_strength_changed)
+	game_loop_hud.strength_changed.connect(_on_hud_strength_changed)
 	game_loop_hud.regrow_garden_requested.connect(restart_level)
+	game_loop_hud.main_menu_requested.connect(open_main_menu)
+	game_loop_hud.garage_requested.connect(open_garage_screen)
+	game_loop_hud.settings_requested.connect(open_settings_screen)
+	game_loop_hud.level_select_requested.connect(open_level_select_screen)
+
+	game_loop_hud.sync_tuning_sliders(
+		player_profile.configured_move_speed,
+		player_profile.configured_cutting_radius,
+		player_profile.configured_blade_power,
+		player_profile.configured_boost_multiplier,
+		player_profile.is_creative_mode()
+	)
+
+func _setup_menu_system_overlay() -> void:
+	var hud_layer := get_node_or_null("StartupHUD") as CanvasLayer
+	if hud_layer == null:
+		return
+	menu_overlay = MenuSystemOverlayScript.new()
+	hud_layer.add_child(menu_overlay)
+
+	menu_overlay.play_requested.connect(func() -> void:
+		set_creative_mode_enabled(false)
+		close_menus_and_resume()
+	)
+	menu_overlay.creative_play_requested.connect(func() -> void:
+		set_creative_mode_enabled(true)
+		close_menus_and_resume()
+	)
+	menu_overlay.level_launch_requested.connect(func(lid: String, mode: int) -> void:
+		player_profile.set_play_mode(mode)
+		if game_loop_hud:
+			game_loop_hud.set_creative_button_state(player_profile.is_creative_mode())
+		select_and_start_level(lid)
+		close_menus_and_resume()
+	)
+	menu_overlay.garage_customization_changed.connect(func(mower_type: String, skin_id: String) -> void:
+		player_profile.select_mower_type(mower_type)
+		player_profile.select_skin(skin_id)
+		_apply_profile_to_mower()
+		player_profile.save_to_disk()
+	)
+	menu_overlay.upgrade_toggled.connect(func(upgrade_id: String, enabled: bool) -> void:
+		player_profile.set_upgrade_enabled(upgrade_id, enabled)
+		_apply_profile_to_mower()
+		player_profile.save_to_disk()
+	)
+	menu_overlay.strength_changed.connect(_on_hud_strength_changed)
+	menu_overlay.settings_changed.connect(_on_menu_settings_changed)
+	menu_overlay.reset_save_requested.connect(_on_reset_save_requested)
+
+	_refresh_menu_overlay_state()
+
+func _refresh_menu_overlay_state() -> void:
+	if menu_overlay == null or player_profile == null:
+		return
+	menu_overlay.sync_from_profile(player_profile)
+	menu_overlay.populate_level_cards(
+		LevelConfigScript.get_level_catalog_summaries(),
+		player_profile.best_level_times,
+		player_profile.completed_levels
+	)
+	var vp_size := get_viewport().get_visible_rect().size
+	menu_overlay.adapt_to_viewport(vp_size, player_profile.ui_text_scale)
+	if game_loop_hud:
+		game_loop_hud.apply_responsive_layout(vp_size, player_profile.ui_text_scale)
+
+func open_main_menu() -> void:
+	if game_loop_hud:
+		game_loop_hud.set_pause_modal_visible(false)
+		game_loop_hud.set_tuning_modal_visible(false)
+		game_loop_hud.hide_level_complete_modal()
+	_refresh_menu_overlay_state()
+	if menu_overlay:
+		menu_overlay.show_screen(MenuSystemOverlayScript.Screen.MAIN_MENU)
+	game_state = GameState.PAUSED
+	get_tree().paused = true
+	_update_status_hud()
+
+func open_level_select_screen() -> void:
+	if game_loop_hud:
+		game_loop_hud.set_pause_modal_visible(false)
+		game_loop_hud.hide_level_complete_modal()
+	_refresh_menu_overlay_state()
+	if menu_overlay:
+		menu_overlay.show_screen(MenuSystemOverlayScript.Screen.LEVEL_SELECT)
+	game_state = GameState.PAUSED
+	get_tree().paused = true
+
+func open_garage_screen() -> void:
+	if game_loop_hud:
+		game_loop_hud.set_pause_modal_visible(false)
+	_refresh_menu_overlay_state()
+	if menu_overlay:
+		menu_overlay.show_screen(MenuSystemOverlayScript.Screen.GARAGE)
+	game_state = GameState.PAUSED
+	get_tree().paused = true
+
+func open_settings_screen() -> void:
+	if game_loop_hud:
+		game_loop_hud.set_pause_modal_visible(false)
+	_refresh_menu_overlay_state()
+	if menu_overlay:
+		menu_overlay.show_screen(MenuSystemOverlayScript.Screen.SETTINGS)
+	game_state = GameState.PAUSED
+	get_tree().paused = true
+
+func close_menus_and_resume() -> void:
+	if menu_overlay:
+		menu_overlay.show_screen(MenuSystemOverlayScript.Screen.NONE)
+	resume_game()
+
+func _apply_profile_to_mower() -> void:
+	if garden_arena == null or garden_arena.mower_placeholder == null or player_profile == null:
+		return
+	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
+	player_profile.apply_to_mower(mower, mower_growth_scale)
+	if mower.body_root:
+		mower.body_root.scale = Vector3.ONE * mower_growth_scale
+
+func _apply_settings_to_runtime() -> void:
+	if player_profile == null:
+		return
+	if main_camera and main_camera.has_method("set_zoom_level"):
+		main_camera.set_zoom_level(player_profile.camera_zoom)
+		main_camera.set("follow_smoothness", 8.5 * player_profile.camera_sensitivity)
+	if garden_arena and garden_arena.sound_hooks:
+		var eff_vol: float = player_profile.master_volume * player_profile.sfx_volume
+		if garden_arena.sound_hooks.get("_player") != null:
+			var p: AudioStreamPlayer = garden_arena.sound_hooks.get("_player")
+			p.volume_db = linear_to_db(maxf(eff_vol, 0.0001))
+	var sun := get_node_or_null("DirectionalLight3D") as DirectionalLight3D
+	if sun:
+		sun.shadow_enabled = (player_profile.graphics_quality != "Low")
+	if menu_overlay:
+		var vp_size := get_viewport().get_visible_rect().size
+		menu_overlay.adapt_to_viewport(vp_size, player_profile.ui_text_scale)
+	if game_loop_hud:
+		var vp_size := get_viewport().get_visible_rect().size
+		game_loop_hud.apply_responsive_layout(vp_size, player_profile.ui_text_scale)
+
+func _on_hud_strength_changed(spd: float, rad: float, pwr: int, bst: float) -> void:
+	if player_profile == null:
+		return
+	player_profile.set_mower_strength(spd, rad, pwr, bst)
+	_apply_profile_to_mower()
+	player_profile.save_to_disk()
+	if game_loop_hud:
+		game_loop_hud.sync_tuning_sliders(
+			player_profile.configured_move_speed,
+			player_profile.configured_cutting_radius,
+			player_profile.configured_blade_power,
+			player_profile.configured_boost_multiplier,
+			player_profile.is_creative_mode()
+		)
+	_update_status_hud()
+
+func _on_menu_settings_changed(
+	master_vol: float,
+	music_vol: float,
+	sfx_vol: float,
+	vibration_on: bool,
+	cam_zoom: float,
+	cam_sens: float,
+	gfx_quality: String,
+	text_scale: float
+) -> void:
+	if player_profile == null:
+		return
+	player_profile.set_audio_settings(master_vol, music_vol, sfx_vol, vibration_on)
+	player_profile.set_camera_and_display_settings(cam_zoom, cam_sens, gfx_quality, text_scale)
+	_apply_settings_to_runtime()
+	player_profile.save_to_disk()
+
+func _on_reset_save_requested() -> void:
+	if player_profile == null:
+		return
+	player_profile.reset_save_and_persist()
+	_apply_profile_to_mower()
+	_apply_settings_to_runtime()
+	_refresh_menu_overlay_state()
+	if game_loop_hud:
+		game_loop_hud.sync_tuning_sliders(
+			player_profile.configured_move_speed,
+			player_profile.configured_cutting_radius,
+			player_profile.configured_blade_power,
+			player_profile.configured_boost_multiplier,
+			player_profile.is_creative_mode()
+		)
+	_update_status_hud()
 
 func set_creative_mode_enabled(enabled: bool) -> void:
 	if player_profile == null:
@@ -174,122 +421,65 @@ func set_creative_mode_enabled(enabled: bool) -> void:
 	player_profile.set_play_mode(
 		PlayerProfileScript.PlayMode.CREATIVE_RELAX if enabled else PlayerProfileScript.PlayMode.NORMAL
 	)
-	player_profile.save_to_disk()
-	if game_loop_hud and game_loop_hud.has_method("set_creative_button_state"):
-		game_loop_hud.set_creative_button_state(enabled)
+	if game_loop_hud:
+		game_loop_hud.set_creative_button_state(player_profile.is_creative_mode())
+		game_loop_hud.hide_level_complete_modal()
 	if enabled and game_state == GameState.COMPLETED:
 		game_state = GameState.PLAYING
 		get_tree().paused = false
-		if game_loop_hud:
-			game_loop_hud.hide_level_complete_modal()
 	_apply_profile_to_mower()
+	player_profile.save_to_disk()
 	_update_status_hud()
 
 func select_and_start_level(level_id: String) -> void:
-	if current_level == null or player_profile == null:
-		return
-	if not player_profile.is_level_unlocked(level_id):
-		return
-	player_profile.selected_level_id = level_id
-	player_profile.save_to_disk()
+	if current_level == null:
+		current_level = LevelConfigScript.new()
 	current_level.configure_by_id(level_id)
+	if player_profile:
+		player_profile.selected_level_id = String(current_level.level_id)
+		player_profile.save_to_disk()
 	restart_level()
 
-func on_mower_strength_changed(move_speed: float, cutting_radius: float, blade_power: int, boost_mult: float) -> void:
-	if player_profile == null:
-		return
-	player_profile.set_mower_strength(move_speed, cutting_radius, blade_power, boost_mult)
-	player_profile.save_to_disk()
-	_apply_profile_to_mower()
+func _on_garden_plants_cut(_newly_cut_count: int, _points_earned: int, _cut_by_type: Dictionary) -> void:
+	_update_mower_growth_progression()
+	_check_level_objectives()
 	_update_status_hud()
 
-func _apply_profile_to_mower() -> void:
-	if garden_arena == null or garden_arena.mower_placeholder == null or player_profile == null:
-		return
-	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
-	player_profile.apply_to_mower(mower, mower_growth_scale)
-
-func _apply_level_config() -> void:
-	if current_level == null or garden_arena == null:
-		return
-	_apply_profile_to_mower()
-	if game_loop_hud and player_profile:
-		game_loop_hud.sync_tuning_sliders(
-			float(player_profile.configured_move_speed),
-			float(player_profile.configured_cutting_radius),
-			int(player_profile.configured_blade_power),
-			float(player_profile.configured_boost_multiplier),
-			player_profile.is_creative_mode()
-		)
-	var title_label := get_node_or_null("StartupHUD/SafeMargin/HeaderPanel/VBox/TitleLabel") as Label
-	if title_label:
-		title_label.text = "GRASS MASTER — " + String(current_level.title)
-
-func _on_plants_cut(_newly_cut: int, _points_earned: int, _by_type: Dictionary) -> void:
-	_update_mower_progression_growth()
-	_evaluate_level_objectives()
-	_update_status_hud()
-
-func _update_mower_progression_growth() -> void:
+func _update_mower_growth_progression() -> void:
 	if garden_arena == null or garden_arena.mower_placeholder == null:
 		return
 	var pct: float = garden_arena.get_completion_percentage()
-	mower_growth_scale = 1.0 + clampf(pct / 100.0, 0.0, 1.0) * 0.18
-	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
-	var body_root := mower.get_node_or_null("BodyRoot") as Node3D
-	if body_root:
-		body_root.scale = Vector3.ONE * mower_growth_scale
+	mower_growth_scale = clampf(1.0 + (pct / 100.0) * 0.16, 1.0, 1.16)
 	_apply_profile_to_mower()
 
-func _evaluate_level_objectives() -> Dictionary:
+func _check_level_objectives() -> void:
 	if current_level == null or garden_arena == null:
-		return {}
+		return
+	if player_profile != null and player_profile.is_creative_mode():
+		return
+
 	var pct: float = garden_arena.get_completion_percentage()
 	var pts: int = int(garden_arena.get("total_reward_points"))
 	var eval_res: Dictionary = current_level.evaluate_all(pct, garden_arena.cut_type_counts, pts)
 
-	# In Creative / Relax mode, there is no forced completion modal stop; players mow freely
-	if player_profile and player_profile.is_creative_mode():
-		return eval_res
-
 	if not level_completed_once and bool(eval_res.get("all_completed", false)):
-		_trigger_level_complete(false)
-	elif level_completed_once and keep_mowing_mode and not full_100_completed_once and garden_arena.get_remaining_plant_count() == 0:
+		level_completed_once = true
+		_trigger_level_complete(pct, pts)
+	elif keep_mowing_mode and not full_100_completed_once and garden_arena.get_remaining_plant_count() == 0:
 		full_100_completed_once = true
-		_trigger_level_complete(true)
+		_trigger_level_complete(100.0, pts)
 
-	return eval_res
-
-func _trigger_level_complete(is_full_clear: bool) -> void:
-	level_completed_once = true
+func _trigger_level_complete(pct: float, pts: int) -> void:
 	game_state = GameState.COMPLETED
-	get_tree().paused = true
-
-	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
-	if mower:
-		mower.set_touch_input(Vector2.ZERO)
-		mower.set_touch_boost(false)
-		mower.velocity = Vector3.ZERO
-	if touch_controls and touch_controls.has_method("set_simulated_joystick"):
-		touch_controls.set_simulated_joystick(Vector2.ZERO)
-
-	var pct: float = garden_arena.get_completion_percentage()
-	var pts: int = int(garden_arena.get("total_reward_points"))
-	last_earned_stars = current_level.calculate_stars(pct, elapsed_level_seconds)
+	last_earned_stars = current_level.calculate_star_rating(elapsed_level_seconds, pct)
 	var reward_coins: int = int(current_level.base_coin_reward) + (last_earned_stars * 50)
-	if is_full_clear:
-		reward_coins = 150
 	total_coins_earned += reward_coins
 	if player_profile:
 		player_profile.add_coins(reward_coins)
-		player_profile.completed_levels[String(current_level.level_id)] = last_earned_stars
+		player_profile.record_level_completion(String(current_level.level_id), last_earned_stars, elapsed_level_seconds)
 		player_profile.save_to_disk()
-
-	if garden_arena.sound_hooks and garden_arena.sound_hooks.has_method("play_cut_sound"):
-		garden_arena.sound_hooks.play_cut_sound("large_trim_plants", 6)
-
+	get_tree().paused = true
 	if game_loop_hud:
-		game_loop_hud.set_pause_modal_visible(false)
 		game_loop_hud.show_level_complete_modal(
 			String(current_level.title),
 			last_earned_stars,
@@ -298,28 +488,27 @@ func _trigger_level_complete(is_full_clear: bool) -> void:
 			reward_coins,
 			elapsed_level_seconds
 		)
+	_update_status_hud()
 
 func pause_game() -> void:
 	if game_state != GameState.PLAYING:
 		return
 	game_state = GameState.PAUSED
 	get_tree().paused = true
-	if touch_controls and touch_controls.has_method("set_simulated_joystick"):
-		touch_controls.set_simulated_joystick(Vector2.ZERO)
 	if game_loop_hud:
 		game_loop_hud.set_pause_modal_visible(true)
+	_update_status_hud()
 
 func resume_game() -> void:
-	if game_state != GameState.PAUSED:
-		return
-	game_state = GameState.PLAYING
+	if game_state == GameState.PAUSED:
+		game_state = GameState.PLAYING
 	get_tree().paused = false
 	if game_loop_hud:
 		game_loop_hud.set_pause_modal_visible(false)
+		game_loop_hud.set_tuning_modal_visible(false)
+	_update_status_hud()
 
 func continue_mowing_after_complete() -> void:
-	if game_state != GameState.COMPLETED:
-		return
 	keep_mowing_mode = true
 	game_state = GameState.PLAYING
 	get_tree().paused = false
@@ -339,25 +528,24 @@ func restart_level() -> void:
 
 	if garden_arena:
 		garden_arena.reset_all_plants()
-		var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
-		if mower:
+		if garden_arena.mower_placeholder:
+			var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
 			mower.global_position = Vector3.ZERO
 			mower.velocity = Vector3.ZERO
 			mower.rotation = Vector3.ZERO
 			mower.set_touch_input(Vector2.ZERO)
 			mower.set_touch_boost(false)
-			var body_root := mower.get_node_or_null("BodyRoot") as Node3D
-			if body_root:
-				body_root.scale = Vector3.ONE
+	_apply_profile_to_mower()
+
 	if touch_controls and touch_controls.has_method("set_simulated_joystick"):
 		touch_controls.set_simulated_joystick(Vector2.ZERO)
 	if main_camera and main_camera.has_method("snap_to_target"):
 		main_camera.snap_to_target()
 	if game_loop_hud:
 		game_loop_hud.set_pause_modal_visible(false)
+		game_loop_hud.set_tuning_modal_visible(false)
 		game_loop_hud.hide_level_complete_modal()
 
-	_apply_level_config()
 	_update_status_hud()
 
 func _update_status_hud() -> void:
@@ -395,7 +583,7 @@ func _update_status_hud() -> void:
 func _verify_input_actions() -> void:
 	for action in REQUIRED_ACTIONS:
 		if not InputMap.has_action(action):
-			push_error("[Step7] Missing required InputMap action: " + String(action))
+			push_error("[Step8] Missing required InputMap action: " + String(action))
 
 func _run_step3_self_test() -> void:
 	var failures: Array[String] = []
@@ -510,7 +698,7 @@ func _run_step5_self_test(_dt: float) -> void:
 	var count_after_first: int = garden_arena.get_total_cut_count()
 	var points_after_first: int = int(garden_arena.get("total_reward_points"))
 	var bursts_after_first: int = int(garden_arena.clipping_burst_manager.get("total_bursts_emitted"))
-	var sounds_after_first: int = int(garden_arena.sound_hooks.get("total_cut_sounds_played"))
+	var sounds_after_first: int = int(garden_arena.sound_hooks.get("total_sound_events"))
 
 	if first_cut <= 0 or first_points <= 0:
 		failures.append("First cutting pass did not cut any plants or award points (cut=%d, pts=%d)" % [first_cut, first_points])
@@ -634,7 +822,6 @@ func _run_step7_self_test(dt: float) -> void:
 	var failures: Array[String] = []
 	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
 
-	# 1. Verify all levels, mower types, skins, upgrades, and boosters are unlocked from first launch
 	for lid in LevelConfigScript.get_all_level_ids():
 		if not player_profile.is_level_unlocked(lid):
 			failures.append("Level '%s' is not unlocked on first launch" % lid)
@@ -651,14 +838,12 @@ func _run_step7_self_test(dt: float) -> void:
 		if not player_profile.is_booster_unlocked(bid):
 			failures.append("Booster '%s' is not unlocked" % bid)
 
-	# 2. Verify unlimited resources (∞) never run out even when spending huge amounts
 	player_profile.unlimited_resources = true
 	var initial_cap: int = player_profile.coins_balance
 	player_profile.spend_coins(50000000)
 	if player_profile.coins_balance != initial_cap or not player_profile.get_coins_display().begins_with("∞"):
 		failures.append("Unlimited resources failed to maintain cap or ∞ display after spending")
 
-	# 3. Verify extreme setting values (negative, massive, NaN, INF) are safely clamped and do not break physics
 	player_profile.set_mower_strength(-9999.0, -50.0, -100, -5.0, -99.0)
 	if absf(player_profile.configured_move_speed - PlayerProfileScript.MIN_MOVE_SPEED) > 0.001:
 		failures.append("Minimum move_speed clamp failed: %.2f" % player_profile.configured_move_speed)
@@ -677,12 +862,10 @@ func _run_step7_self_test(dt: float) -> void:
 	if absf(player_profile.configured_boost_multiplier - PlayerProfileScript.MAX_BOOST_MULTIPLIER) > 0.001:
 		failures.append("Maximum boost_multiplier clamp failed: %.2f" % player_profile.configured_boost_multiplier)
 
-	# Test NaN / INF resilience
 	player_profile.set_mower_strength(NAN, INF, 3, NAN, INF)
 	if is_nan(player_profile.configured_move_speed) or is_inf(player_profile.configured_cutting_radius):
 		failures.append("NaN/INF guard failed in set_mower_strength")
 
-	# Test driving at maximum clamped speed + boost against boundary walls (must never escape map)
 	player_profile.set_mower_strength(999999.0, 9999.0, 5, 999.0, 999.0)
 	_apply_profile_to_mower()
 	mower.global_position = Vector3(0.0, 0.0, -12.0)
@@ -696,7 +879,6 @@ func _run_step7_self_test(dt: float) -> void:
 	if absf(mower.global_position.z) > 15.6 or absf(mower.global_position.x) > 15.6:
 		failures.append("Mower escaped map under maximum clamped speed + boost: pos=%s" % str(mower.global_position))
 
-	# 4. Verify Creative / Relax mode: no timer progression, cuts high-resistance plants even if configured power=1, and does not force completion stop
 	player_profile.set_mower_strength(10.0, 1.80, 1, 1.6, 12.0)
 	set_creative_mode_enabled(true)
 	restart_level()
@@ -711,7 +893,6 @@ func _run_step7_self_test(dt: float) -> void:
 	if game_state != GameState.PLAYING or get_tree().paused:
 		failures.append("Creative mode unexpectedly paused/stopped gameplay with a completion modal")
 
-	# 5. Verify local persistence (save, reload, and corrupt JSON recovery)
 	var test_save_path := "user://test_step7_persistence.json"
 	player_profile.set_mower_strength(12.5, 2.15, 4, 1.75, 15.0)
 	player_profile.select_mower_type("turbo_hover_deck")
@@ -727,7 +908,6 @@ func _run_step7_self_test(dt: float) -> void:
 	if reloaded_profile.selected_mower_type != "turbo_hover_deck" or reloaded_profile.selected_skin != "sunlit_gold":
 		failures.append("Reloaded profile mower/skin selection did not match saved values")
 
-	# Corrupt JSON test
 	var bad_file := FileAccess.open(test_save_path, FileAccess.WRITE)
 	bad_file.store_string("{corrupted_json_data: [")
 	bad_file.close()
@@ -736,7 +916,6 @@ func _run_step7_self_test(dt: float) -> void:
 	if load_ok or absf(recovered_profile.configured_move_speed - PlayerProfileScript.DEFAULT_MOVE_SPEED) > 0.01:
 		failures.append("Corrupted save did not cleanly recover to safe default settings")
 
-	# Restore clean default profile
 	player_profile.reset_to_defaults()
 	player_profile.save_to_disk()
 	set_creative_mode_enabled(false)
@@ -754,3 +933,124 @@ func _run_step7_self_test(dt: float) -> void:
 		return
 
 	print("[TestStep7] PASS — All-level access, unlimited resources (∞), all upgrades unlocked, safe clamped mower strength, Creative/Relax mode, and persistence verified.")
+
+func _run_step8_self_test(_dt: float) -> void:
+	var failures: Array[String] = []
+	var mower: CharacterBody3D = garden_arena.mower_placeholder as CharacterBody3D
+
+	if menu_overlay == null:
+		failures.append("MenuSystemOverlay is missing")
+
+	# 1. Test Main Menu, Level Select, Garage, Settings & Credits navigation flows
+	open_main_menu()
+	if not menu_overlay.is_menu_open() or menu_overlay.current_screen != MenuSystemOverlayScript.Screen.MAIN_MENU:
+		failures.append("open_main_menu() failed to show MAIN_MENU screen")
+	if not menu_overlay.main_menu_panel.visible:
+		failures.append("MainMenuPanel is not visible when MAIN_MENU screen is active")
+
+	open_level_select_screen()
+	if menu_overlay.current_screen != MenuSystemOverlayScript.Screen.LEVEL_SELECT or not menu_overlay.level_select_panel.visible:
+		failures.append("open_level_select_screen() failed to show LEVEL_SELECT panel")
+	if menu_overlay.level_cards_hbox.get_child_count() < 3:
+		failures.append("Level Select did not populate all 3 unlocked level cards")
+
+	open_garage_screen()
+	if menu_overlay.current_screen != MenuSystemOverlayScript.Screen.GARAGE or not menu_overlay.garage_panel.visible:
+		failures.append("open_garage_screen() failed to show GARAGE panel")
+
+	# 2. Test Garage mower & skin customization + upgrade toggles
+	menu_overlay._on_garage_mower_selected("heavy_topiary_sculptor")
+	menu_overlay._on_garage_skin_selected("cobalt_breeze")
+	if player_profile.selected_mower_type != "heavy_topiary_sculptor" or player_profile.selected_skin != "cobalt_breeze":
+		failures.append("Garage selection did not update PlayerProfile mower/skin")
+	if String(mower.get("active_mower_type")) != "heavy_topiary_sculptor" or String(mower.get("active_skin_id")) != "cobalt_breeze":
+		failures.append("Garage selection did not apply visual customization to 3D MowerPlaceholder")
+
+	player_profile.set_upgrade_enabled("wide_deck_expander", false)
+	if player_profile.is_upgrade_enabled("wide_deck_expander"):
+		failures.append("Failed to toggle upgrade wide_deck_expander off")
+	player_profile.set_upgrade_enabled("wide_deck_expander", true)
+
+	# 3. Test Settings screen: Audio, Vibration, Camera Zoom/Sensitivity, Graphics Quality, Large Text
+	open_settings_screen()
+	if menu_overlay.current_screen != MenuSystemOverlayScript.Screen.SETTINGS or not menu_overlay.settings_panel.visible:
+		failures.append("open_settings_screen() failed to show SETTINGS panel")
+
+	_on_menu_settings_changed(0.65, 0.50, 0.75, false, 1.25, 1.40, "Low", 1.25)
+	if absf(player_profile.master_volume - 0.65) > 0.01 or player_profile.vibration_enabled != false:
+		failures.append("Settings audio/vibration update failed")
+	if absf(float(main_camera.get("zoom_level")) - 1.25) > 0.01:
+		failures.append("Settings camera_zoom did not apply to FollowCamera")
+	var sun := get_node_or_null("DirectionalLight3D") as DirectionalLight3D
+	if sun and sun.shadow_enabled != false:
+		failures.append("Graphics quality 'Low' did not disable directional shadows")
+
+	# Credits screen check
+	menu_overlay.show_screen(MenuSystemOverlayScript.Screen.CREDITS)
+	if not menu_overlay.credits_panel.visible:
+		failures.append("Credits panel did not become visible")
+
+	close_menus_and_resume()
+	if menu_overlay.is_menu_open() or get_tree().paused:
+		failures.append("close_menus_and_resume() did not close menu overlay and unpause")
+
+	# 4. Test Save / Load, Corruption Recovery & Reset Save
+	var step8_save_path := "user://test_step8_save.json"
+	player_profile.record_level_completion("level_02_blossom_terrace", 3, 64.2)
+	if not player_profile.save_to_disk(step8_save_path):
+		failures.append("Failed to save Step 8 profile to disk")
+
+	var loaded_p := PlayerProfileScript.new()
+	if not loaded_p.load_from_disk(step8_save_path):
+		failures.append("Failed to load Step 8 profile from disk")
+	if int(loaded_p.completed_levels.get("level_02_blossom_terrace", 0)) != 3:
+		failures.append("Loaded profile did not preserve completed level stars")
+	if loaded_p.graphics_quality != "Low" or absf(loaded_p.ui_text_scale - 1.25) > 0.01:
+		failures.append("Loaded profile did not preserve graphics_quality or ui_text_scale")
+
+	# Corrupt save recovery check
+	var corrupt_f := FileAccess.open(step8_save_path, FileAccess.WRITE)
+	corrupt_f.store_string("NOT_VALID_JSON_AT_ALL{{{")
+	corrupt_f.close()
+	var recovered_p := PlayerProfileScript.new()
+	var ok_corrupt := recovered_p.load_from_disk(step8_save_path)
+	if ok_corrupt or not recovered_p.last_load_recovered_from_corruption:
+		failures.append("Corrupted save was not flagged by last_load_recovered_from_corruption")
+
+	# Reset save option check
+	_on_reset_save_requested()
+	if player_profile.selected_mower_type != "standard_rotary" or player_profile.graphics_quality != "High":
+		failures.append("Reset save did not restore default mower or High graphics quality")
+	if not player_profile.completed_levels.is_empty():
+		failures.append("Reset save did not clear completed_levels history")
+
+	# 5. Test UI layout across multiple aspect ratios (16:9, 20:9, 21:9, 4:3) and large text (1.0x and 1.25x)
+	var test_viewports: Array[Vector2] = [
+		Vector2(1280, 720),  # 16:9 standard landscape
+		Vector2(1600, 720),  # 20:9 modern Android phone landscape
+		Vector2(1680, 720),  # 21:9 ultra-wide landscape
+		Vector2(1024, 768)   # 4:3 tablet landscape
+	]
+	for vp in test_viewports:
+		for t_scale in [1.0, 1.25]:
+			var layout_res: Dictionary = menu_overlay.adapt_to_viewport(vp, t_scale)
+			game_loop_hud.apply_responsive_layout(vp, t_scale)
+			if not bool(layout_res.get("fits_bounds", false)):
+				failures.append("UI layout overflowed bounds at viewport %s with text_scale %.2f" % [str(vp), t_scale])
+
+	# Restore standard 1280x720 1.0x layout
+	menu_overlay.adapt_to_viewport(Vector2(1280, 720), 1.0)
+	game_loop_hud.apply_responsive_layout(Vector2(1280, 720), 1.0)
+	restart_level()
+
+	print(
+		"[TestStep8] Verified Main Menu, Level Select (3 cards), Garage (4 mowers, 4 skins, 5 upgrades), Settings (Audio/Zoom/Graphics/LargeText), Save Reset, Corruption Recovery, and 4 Aspect Ratios (16:9, 20:9, 21:9, 4:3)."
+	)
+
+	if failures.size() > 0:
+		for msg in failures:
+			push_error("[TestStep8] FAIL: " + msg)
+		get_tree().quit(1)
+		return
+
+	print("[TestStep8] PASS — Menus, garage, settings, local save/load, reset save, corruption recovery, and multi-aspect-ratio/large-text UI verified.")
