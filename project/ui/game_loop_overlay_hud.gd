@@ -1,10 +1,11 @@
 extends Control
 class_name GameLoopOverlayHUD
 
-## Step 6 — Core Game Loop UI Overlay.
+## Step 6 & Step 7 — Core Game Loop + Unlocks, Unlimited Resources & Creative Mode UI Overlay.
 ## Provides:
-## - Top-left Objective Tracker checklist + progress bar + timer
-## - Top-right Pause & Restart quick-action buttons (>= 48dp touch targets)
+## - Top-left Objective Tracker checklist + progress bar + timer (or Creative/Relax Zen banner)
+## - Top-right Quick Actions: Creative Mode Toggle, Mower Strength / Unlocks Modal Button, Restart, Pause (>= 48dp touch targets)
+## - Center Modal Mower Strength & Unlocks Configurator (All Levels selectable, Unlimited Resources ∞, Speed/Radius/Power/Boost sliders)
 ## - Center Modal Pause Overlay (Resume, Restart Level)
 ## - Center Modal Level Complete Overlay (Stars, Stats, Play Again / Restart, Keep Mowing 100%)
 
@@ -12,13 +13,31 @@ signal pause_requested()
 signal resume_requested()
 signal restart_requested()
 signal keep_mowing_requested()
+signal creative_mode_toggled(enabled: bool)
+signal level_selected(level_id: String)
+signal strength_changed(move_speed: float, cutting_radius: float, blade_power: int, boost_mult: float)
+signal regrow_garden_requested()
 
 var objective_title_label: Label
 var timer_label: Label
 var overall_progress_bar: ProgressBar
 var checklist_vbox: VBoxContainer
+
+var creative_toggle_button: Button
+var tuning_open_button: Button
 var pause_top_button: Button
 var restart_top_button: Button
+
+var tuning_modal_backdrop: ColorRect
+var speed_slider: HSlider
+var speed_value_label: Label
+var radius_slider: HSlider
+var radius_value_label: Label
+var power_slider: HSlider
+var power_value_label: Label
+var boost_slider: HSlider
+var boost_value_label: Label
+var level_buttons_hbox: HBoxContainer
 
 var pause_modal_backdrop: ColorRect
 var resume_button: Button
@@ -38,6 +57,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_objective_panel()
 	_build_top_right_buttons()
+	_build_tuning_modal()
 	_build_pause_modal()
 	_build_complete_modal()
 
@@ -48,8 +68,8 @@ func _build_objective_panel() -> void:
 	panel.anchor_top = 0.0
 	panel.offset_left = 24.0
 	panel.offset_top = 92.0
-	panel.offset_right = 374.0
-	panel.offset_bottom = 292.0
+	panel.offset_right = 384.0
+	panel.offset_bottom = 296.0
 	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var style := StyleBoxFlat.new()
@@ -104,27 +124,237 @@ func _build_top_right_buttons() -> void:
 	top_right.name = "TopRightLoopButtons"
 	top_right.anchor_left = 1.0
 	top_right.anchor_right = 1.0
-	top_right.offset_left = -254.0
+	top_right.offset_left = -560.0
 	top_right.offset_top = 92.0
 	top_right.offset_right = -24.0
 	top_right.offset_bottom = 148.0
 	top_right.alignment = BoxContainer.ALIGNMENT_END
-	top_right.add_theme_constant_override("separation", 10)
+	top_right.add_theme_constant_override("separation", 8)
 	add_child(top_right)
+
+	creative_toggle_button = Button.new()
+	creative_toggle_button.name = "CreativeModeButton"
+	creative_toggle_button.text = "Mode: Normal"
+	creative_toggle_button.custom_minimum_size = Vector2(142.0, 52.0)
+	creative_toggle_button.pressed.connect(_on_creative_button_pressed)
+	top_right.add_child(creative_toggle_button)
+
+	tuning_open_button = Button.new()
+	tuning_open_button.name = "MowerStrengthButton"
+	tuning_open_button.text = "Unlocks & Tuning"
+	tuning_open_button.custom_minimum_size = Vector2(148.0, 52.0)
+	tuning_open_button.pressed.connect(func() -> void: set_tuning_modal_visible(true))
+	top_right.add_child(tuning_open_button)
 
 	restart_top_button = Button.new()
 	restart_top_button.name = "QuickRestartButton"
 	restart_top_button.text = "Restart"
-	restart_top_button.custom_minimum_size = Vector2(108.0, 52.0)
+	restart_top_button.custom_minimum_size = Vector2(102.0, 52.0)
 	restart_top_button.pressed.connect(func() -> void: restart_requested.emit())
 	top_right.add_child(restart_top_button)
 
 	pause_top_button = Button.new()
 	pause_top_button.name = "PauseButton"
 	pause_top_button.text = "Pause"
-	pause_top_button.custom_minimum_size = Vector2(108.0, 52.0)
+	pause_top_button.custom_minimum_size = Vector2(102.0, 52.0)
 	pause_top_button.pressed.connect(func() -> void: pause_requested.emit())
 	top_right.add_child(pause_top_button)
+
+func _build_tuning_modal() -> void:
+	tuning_modal_backdrop = ColorRect.new()
+	tuning_modal_backdrop.name = "TuningModalBackdrop"
+	tuning_modal_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tuning_modal_backdrop.color = Color(0.02, 0.06, 0.03, 0.78)
+	tuning_modal_backdrop.visible = false
+	tuning_modal_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(tuning_modal_backdrop)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tuning_modal_backdrop.add_child(center)
+
+	var card := PanelContainer.new()
+	card.name = "TuningCard"
+	card.custom_minimum_size = Vector2(620.0, 460.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.18, 0.10, 0.97)
+	style.border_color = Color(0.55, 0.92, 0.42, 0.95)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(14)
+	style.content_margin_left = 24.0
+	style.content_margin_right = 24.0
+	style.content_margin_top = 18.0
+	style.content_margin_bottom = 18.0
+	card.add_theme_stylebox_override("panel", style)
+	center.add_child(card)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	card.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "UNLOCKS, UNLIMITED RESOURCES (∞) & MOWER STRENGTH"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.96, 1.0, 0.88))
+	vbox.add_child(title)
+
+	var unlock_badge := Label.new()
+	unlock_badge.text = "Coins: ∞ (Unlimited) | All Levels, 4 Mowers, 4 Skins & 5 Upgrades UNLOCKED"
+	unlock_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	unlock_badge.add_theme_font_size_override("font_size", 13)
+	unlock_badge.add_theme_color_override("font_color", Color(0.62, 0.98, 0.56))
+	vbox.add_child(unlock_badge)
+
+	# All-level quick selector row
+	var lvl_label := Label.new()
+	lvl_label.text = "Select Any Unlocked Level:"
+	lvl_label.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(lvl_label)
+
+	level_buttons_hbox = HBoxContainer.new()
+	level_buttons_hbox.add_theme_constant_override("separation", 8)
+	vbox.add_child(level_buttons_hbox)
+
+	var level_defs := [
+		{"id": "level_01_sunlit_courtyard", "label": "Level 1: Courtyard"},
+		{"id": "level_02_blossom_terrace", "label": "Level 2: Terrace"},
+		{"id": "level_03_royal_topiary_maze", "label": "Level 3: Royal Topiary"}
+	]
+	for def in level_defs:
+		var btn := Button.new()
+		btn.text = String(def["label"])
+		btn.custom_minimum_size = Vector2(180.0, 48.0)
+		var lid: String = String(def["id"])
+		btn.pressed.connect(func() -> void:
+			level_selected.emit(lid)
+			set_tuning_modal_visible(false)
+		)
+		level_buttons_hbox.add_child(btn)
+
+	# Configurable mower strength sliders (clamped to safe ranges)
+	speed_slider = _add_slider_row(vbox, "Move Speed (m/s):", 4.0, 16.0, 0.5, 8.5, "speed")
+	radius_slider = _add_slider_row(vbox, "Cutting Radius (m):", 0.85, 3.20, 0.05, 1.45, "radius")
+	power_slider = _add_slider_row(vbox, "Blade Power (1-5):", 1.0, 5.0, 1.0, 3.0, "power")
+	boost_slider = _add_slider_row(vbox, "Boost Multiplier:", 1.10, 2.10, 0.05, 1.55, "boost")
+
+	var action_row := HBoxContainer.new()
+	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(action_row)
+
+	var regrow_btn := Button.new()
+	regrow_btn.text = "Regrow All Plants"
+	regrow_btn.custom_minimum_size = Vector2(185.0, 50.0)
+	regrow_btn.pressed.connect(func() -> void: regrow_garden_requested.emit())
+	action_row.add_child(regrow_btn)
+
+	var close_btn := Button.new()
+	close_btn.name = "CloseTuningButton"
+	close_btn.text = "Apply & Close"
+	close_btn.custom_minimum_size = Vector2(185.0, 50.0)
+	close_btn.pressed.connect(func() -> void: set_tuning_modal_visible(false))
+	action_row.add_child(close_btn)
+
+func _add_slider_row(
+	parent: VBoxContainer,
+	title_text: String,
+	min_v: float,
+	max_v: float,
+	step_v: float,
+	initial_v: float,
+	kind: String
+) -> HSlider:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+
+	var lbl := Label.new()
+	lbl.text = title_text
+	lbl.custom_minimum_size = Vector2(170.0, 28.0)
+	row.add_child(lbl)
+
+	var slider := HSlider.new()
+	slider.min_value = min_v
+	slider.max_value = max_v
+	slider.step = step_v
+	slider.value = initial_v
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(240.0, 32.0)
+	row.add_child(slider)
+
+	var val_lbl := Label.new()
+	val_lbl.custom_minimum_size = Vector2(72.0, 28.0)
+	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val_lbl.text = "%.2f" % initial_v
+	row.add_child(val_lbl)
+
+	if kind == "speed":
+		speed_value_label = val_lbl
+	elif kind == "radius":
+		radius_value_label = val_lbl
+	elif kind == "power":
+		power_value_label = val_lbl
+		val_lbl.text = "%d" % int(initial_v)
+	elif kind == "boost":
+		boost_value_label = val_lbl
+
+	slider.value_changed.connect(func(_v: float) -> void: _emit_slider_strength())
+	return slider
+
+func _emit_slider_strength() -> void:
+	if speed_slider == null or radius_slider == null or power_slider == null or boost_slider == null:
+		return
+	var spd: float = float(speed_slider.value)
+	var rad: float = float(radius_slider.value)
+	var pwr: int = int(round(power_slider.value))
+	var bst: float = float(boost_slider.value)
+	if speed_value_label:
+		speed_value_label.text = "%.1f" % spd
+	if radius_value_label:
+		radius_value_label.text = "%.2f" % rad
+	if power_value_label:
+		power_value_label.text = "%d" % pwr
+	if boost_value_label:
+		boost_value_label.text = "%.2fx" % bst
+	strength_changed.emit(spd, rad, pwr, bst)
+
+func sync_tuning_sliders(spd: float, rad: float, pwr: int, bst: float, is_creative: bool) -> void:
+	if speed_slider:
+		speed_slider.set_value_no_signal(spd)
+	if radius_slider:
+		radius_slider.set_value_no_signal(rad)
+	if power_slider:
+		power_slider.set_value_no_signal(float(pwr))
+	if boost_slider:
+		boost_slider.set_value_no_signal(bst)
+	if speed_value_label:
+		speed_value_label.text = "%.1f" % spd
+	if radius_value_label:
+		radius_value_label.text = "%.2f" % rad
+	if power_value_label:
+		power_value_label.text = "%d" % pwr
+	if boost_value_label:
+		boost_value_label.text = "%.2fx" % bst
+	if creative_toggle_button:
+		creative_toggle_button.text = "Mode: Creative ∞" if is_creative else "Mode: Normal"
+
+var _creative_active_state: bool = false
+
+func _on_creative_button_pressed() -> void:
+	_creative_active_state = not _creative_active_state
+	if creative_toggle_button:
+		creative_toggle_button.text = "Mode: Creative ∞" if _creative_active_state else "Mode: Normal"
+	creative_mode_toggled.emit(_creative_active_state)
+
+func set_creative_button_state(active: bool) -> void:
+	_creative_active_state = active
+	if creative_toggle_button:
+		creative_toggle_button.text = "Mode: Creative ∞" if active else "Mode: Normal"
+
+func set_tuning_modal_visible(show_modal: bool) -> void:
+	if tuning_modal_backdrop:
+		tuning_modal_backdrop.visible = show_modal
 
 func _build_pause_modal() -> void:
 	pause_modal_backdrop = ColorRect.new()
@@ -267,18 +497,41 @@ func update_objectives_display(
 	level_title: String,
 	completion_pct: float,
 	elapsed_sec: float,
-	eval_result: Dictionary
+	eval_result: Dictionary,
+	is_creative: bool = false
 ) -> void:
 	if objective_title_label:
-		objective_title_label.text = level_title
+		if is_creative:
+			objective_title_label.text = "Creative / Relax — " + level_title
+		else:
+			objective_title_label.text = level_title
 	if timer_label:
-		var mins := int(elapsed_sec) / 60
-		var secs := int(elapsed_sec) % 60
-		timer_label.text = "%02d:%02d" % [mins, secs]
+		if is_creative:
+			timer_label.text = "NO TIMER (∞)"
+		else:
+			var mins := int(elapsed_sec) / 60
+			var secs := int(elapsed_sec) % 60
+			timer_label.text = "%02d:%02d" % [mins, secs]
 	if overall_progress_bar:
 		overall_progress_bar.value = completion_pct
 
 	if checklist_vbox == null:
+		return
+
+	if is_creative:
+		while checklist_vbox.get_child_count() < 2:
+			var lbl := Label.new()
+			lbl.add_theme_font_size_override("font_size", 13)
+			checklist_vbox.add_child(lbl)
+		for idx in range(checklist_vbox.get_child_count()):
+			var child_lbl := checklist_vbox.get_child(idx) as Label
+			child_lbl.visible = idx < 2
+		var lbl0 := checklist_vbox.get_child(0) as Label
+		lbl0.text = "[ZEN] Free Mowing — No Timer, No Fail State, Max Blade Power (5)"
+		lbl0.add_theme_color_override("font_color", Color(0.62, 0.98, 0.56))
+		var lbl1 := checklist_vbox.get_child(1) as Label
+		lbl1.text = "[∞] Unlimited Coins & All Upgrades Active | Lawn Cleared: %.1f%%" % completion_pct
+		lbl1.add_theme_color_override("font_color", Color(0.90, 0.96, 0.88))
 		return
 
 	var items: Array = eval_result.get("items", [])
@@ -287,9 +540,13 @@ func update_objectives_display(
 		lbl.add_theme_font_size_override("font_size", 13)
 		checklist_vbox.add_child(lbl)
 
-	for i in range(items.size()):
-		var item: Dictionary = items[i]
+	for i in range(checklist_vbox.get_child_count()):
 		var lbl := checklist_vbox.get_child(i) as Label
+		if i >= items.size():
+			lbl.visible = false
+			continue
+		lbl.visible = true
+		var item: Dictionary = items[i]
 		var done: bool = bool(item.get("completed", false))
 		var mark := "[DONE]" if done else "[    ]"
 		var suffix := "%" if bool(item.get("is_percent", false)) else ""
@@ -335,7 +592,7 @@ func show_level_complete_modal(
 		var mins := int(elapsed_sec) / 60
 		var secs := int(elapsed_sec) % 60
 		complete_stats_label.text = (
-			"%s\nMowed: %.1f%%  |  Points: %d  |  Reward: +%d Coins  |  Time: %02d:%02d"
+			"%s\nMowed: %.1f%%  |  Points: %d  |  Reward: +%d Coins (Balance: ∞)  |  Time: %02d:%02d"
 			% [level_title, completion_pct, points, coins_reward, mins, secs]
 		)
 	if complete_keep_mowing_button:

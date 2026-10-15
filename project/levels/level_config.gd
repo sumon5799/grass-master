@@ -1,24 +1,64 @@
 extends RefCounted
 
-## Step 6 — Polished Level Configuration & Objective Definitions.
-## Provides level metadata, objective goals, completion evaluation, and star rating calculation.
+## Step 6 & Step 7 — Level Configuration & All-Level Catalog Definitions.
+## Provides data-driven level metadata, objective goals, completion evaluation,
+## star rating calculation, and full all-unlocked level catalog access.
 
 var level_id: String = "level_01_sunlit_courtyard"
 var level_number: int = 1
-var title: String = "Level 1: Sunlit Courtyard"
-var subtitle: String = "Clear the courtyard lawn, harvest blossoms, and trim topiaries."
+var title: String = "Level 1 — Sunlit Courtyard"
+var subtitle: String = "Mow the courtyard grass, gather blossoms, and sculpt the shrubs."
 var target_overall_percent: float = 85.0
-var time_limit_seconds: float = 0.0 # 0.0 = relaxed untimed level; >0 = optional time challenge
+var time_limit_seconds: float = 0.0
 var three_star_time_seconds: float = 75.0
 var two_star_time_seconds: float = 120.0
 var base_coin_reward: int = 250
 var initial_cutter_power: int = 3
 var initial_cutting_radius: float = 1.45
+var unlocked_by_default: bool = true
 
-# Sub-objectives: array of dictionaries
-# Each entry: { "id": String, "label": String, "type": String, "plant_key": String, "target": int }
-# type can be: "overall_percent", "plant_type_count", "total_points"
 var objectives: Array[Dictionary] = []
+
+static func get_all_level_ids() -> Array[String]:
+	return [
+		"level_01_sunlit_courtyard",
+		"level_02_blossom_terrace",
+		"level_03_royal_topiary_maze"
+	]
+
+static func get_level_catalog_summaries() -> Array[Dictionary]:
+	return [
+		{
+			"id": "level_01_sunlit_courtyard",
+			"number": 1,
+			"title": "Level 1 — Sunlit Courtyard",
+			"subtitle": "Mow 85% lawn, 35 flowers, 25 shrubs, 15 topiaries.",
+			"unlocked": true
+		},
+		{
+			"id": "level_02_blossom_terrace",
+			"number": 2,
+			"title": "Level 2 — Blossom Terrace",
+			"subtitle": "Mow 90% lawn, 50 flowers, 35 shrubs, 25 topiaries.",
+			"unlocked": true
+		},
+		{
+			"id": "level_03_royal_topiary_maze",
+			"number": 3,
+			"title": "Level 3 — Royal Topiary Garden",
+			"subtitle": "Mow 95% lawn, 55 flowers, 45 shrubs, 40 topiaries.",
+			"unlocked": true
+		}
+	]
+
+func configure_by_id(target_id: String) -> void:
+	match target_id:
+		"level_02_blossom_terrace":
+			configure_level_2_blossom_terrace()
+		"level_03_royal_topiary_maze":
+			configure_level_3_royal_topiary_maze()
+		_:
+			configure_level_1_sunlit_courtyard()
 
 func configure_level_1_sunlit_courtyard() -> void:
 	level_id = "level_01_sunlit_courtyard"
@@ -32,6 +72,7 @@ func configure_level_1_sunlit_courtyard() -> void:
 	base_coin_reward = 250
 	initial_cutter_power = 3
 	initial_cutting_radius = 1.45
+	unlocked_by_default = true
 	objectives = [
 		{
 			"id": "mow_85_percent",
@@ -60,6 +101,97 @@ func configure_level_1_sunlit_courtyard() -> void:
 			"type": "plant_type_count",
 			"plant_key": "large_trim_plants",
 			"target": 15
+		}
+	]
+
+func configure_level_2_blossom_tertyard() -> void:
+	configure_level_2_blossom_terrace()
+
+func configure_level_2_blossom_terrace() -> void:
+	level_id = "level_02_blossom_terrace"
+	level_number = 2
+	title = "Level 2 — Blossom Terrace"
+	subtitle = "Clear a fuller terrace and harvest rich flower beds."
+	target_overall_percent = 90.0
+	time_limit_seconds = 0.0
+	three_star_time_seconds = 85.0
+	two_star_time_seconds = 135.0
+	base_coin_reward = 350
+	initial_cutter_power = 3
+	initial_cutting_radius = 1.55
+	unlocked_by_default = true
+	objectives = [
+		{
+			"id": "mow_90_percent",
+			"label": "Mow at least 90% of the garden",
+			"type": "overall_percent",
+			"plant_key": "",
+			"target": 90
+		},
+		{
+			"id": "harvest_flowers_50",
+			"label": "Harvest 50 colorful flowers",
+			"type": "plant_type_count",
+			"plant_key": "colorful_flowers",
+			"target": 50
+		},
+		{
+			"id": "trim_shrubs_35",
+			"label": "Trim 35 small shrubs",
+			"type": "plant_type_count",
+			"plant_key": "small_shrubs",
+			"target": 35
+		},
+		{
+			"id": "sculpt_topiary_25",
+			"label": "Sculpt 25 large topiary plants",
+			"type": "plant_type_count",
+			"plant_key": "large_trim_plants",
+			"target": 25
+		}
+	]
+
+func configure_level_3_royal_topiary_maze() -> void:
+	level_id = "level_03_royal_topiary_maze"
+	level_number = 3
+	title = "Level 3 — Royal Topiary Garden"
+	subtitle = "Master precision mowing and sculpt dense ornamental topiaries."
+	target_overall_percent = 95.0
+	time_limit_seconds = 0.0
+	three_star_time_seconds = 95.0
+	two_star_time_seconds = 150.0
+	base_coin_reward = 500
+	initial_cutter_power = 3
+	initial_cutting_radius = 1.65
+	unlocked_by_default = true
+	objectives = [
+		{
+			"id": "mow_95_percent",
+			"label": "Mow at least 95% of the garden",
+			"type": "overall_percent",
+			"plant_key": "",
+			"target": 95
+		},
+		{
+			"id": "harvest_flowers_55",
+			"label": "Harvest 55 colorful flowers",
+			"type": "plant_type_count",
+			"plant_key": "colorful_flowers",
+			"target": 55
+		},
+		{
+			"id": "trim_shrubs_45",
+			"label": "Trim 45 small shrubs",
+			"type": "plant_type_count",
+			"plant_key": "small_shrubs",
+			"target": 45
+		},
+		{
+			"id": "sculpt_topiary_40",
+			"label": "Sculpt 40 large topiary plants",
+			"type": "plant_type_count",
+			"plant_key": "large_trim_plants",
+			"target": 40
 		}
 	]
 
