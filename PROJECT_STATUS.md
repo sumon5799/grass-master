@@ -1,77 +1,74 @@
-# Grass Master — Project Status
+# PROJECT_STATUS.md — Grass Master
 
 ## Current Status
-- **Completed Step:** Step 1 — Prepare the free development environment
-- **Next Proposed Step:** Step 2 — Create the clean Godot project skeleton (awaiting user approval)
-- **Last Updated:** 2026-10-15
+- **Completed Step:** Step 2 — Create the clean Godot project skeleton
+- **Next Proposed Step:** Step 3 — Build the first playable 3D garden (awaiting explicit user approval)
+- **Working Branch:** `v0/grass-master-dev`
 
 ---
 
-## Step History & Decisions
+## Step 2 Summary (Clean Godot Project Skeleton)
 
-### Step 0 — Read-only environment and project inspection (Completed)
-- **Findings:**
-  - Environment: Amazon Linux 2023.12 (`Linux 6.18.49 x86_64`), 4 vCPU, 8.2 GiB RAM, 62 GB free disk space.
-  - Repository (`sumon5799/grass-master`) initially contained only `GRASS-MASTER.md`.
-  - Missing `image/` reference files (`reference_scene.png`, `gameplay_hud_mockup.png`, `upgrade_ui_concept.png`, `app_icon_concept.png`) noted; will create/handle original assets when reaching the corresponding steps.
-  - Direct USB/ADB connection to target device (`HONOR BVL-AN00`) is not attached to the cloud VM; signed `.apk` builds will be produced locally in the workspace for the user to install and test on-device.
+### Decisions & Configuration
+1. **Project Configuration (`project.godot`):**
+   - `config_version=5` (Godot 4.3)
+   - `application/config/name="Grass Master"`
+   - `application/run/main_scene="res://project/scenes/main.tscn"`
+   - **Viewport & Orientation:** `1280x720` landscape (`window/handheld/orientation=0`), `window/stretch/mode="canvas_items"`, `window/stretch/aspect="expand"` for responsive mobile safe areas and multi-aspect-ratio screens.
+   - **Rendering Defaults:** `mobile` renderer (`renderer/rendering_method="mobile"`), ETC2/ASTC texture compression enabled (`import_etc2_astc=true`), 3D MSAA 2x (`msaa_3d=1`), and mouse-to-touch emulation enabled (`emulate_touch_from_mouse=true`).
+2. **Input Actions Configured:**
+   - `move_forward` (`W`, `Up`)
+   - `move_backward` (`S`, `Down`)
+   - `turn_left` (`A`, `Left`)
+   - `turn_right` (`D`, `Right`)
+   - `boost` (`Space`)
+   - `pause` (`Escape`)
+3. **Directory Structure Created:**
+   - `project/scenes/`
+   - `project/scripts/`
+   - `project/materials/`
+   - `project/models/`
+   - `project/audio/`
+   - `project/ui/`
+   - `project/levels/`
+   - `project/shaders/`
+   - `tests/`
+   - `build/`
+4. **Startup Scene & Asset Tracking:**
+   - Created `project/scenes/main.tscn` and `project/scripts/main.gd` with a basic `Node3D`, `Camera3D`, `DirectionalLight3D`, and `StartupHUD` (`CanvasLayer` + safe margin container).
+   - Created `THIRD_PARTY_ASSETS.md` to track any external assets and licenses.
+   - Created `.gitignore` for `.godot/` cache and temporary build artifacts.
 
-### Step 1 — Prepare the free development environment (Completed)
-- **Decisions:**
-  - Selected **Godot Engine 4.3-stable** (`4.3.stable.official.77dcf97d8`) with GDScript as the 100% free, open-source 3D engine.
-  - Installed **OpenJDK 17** (`Amazon Corretto 17.0.20.1+10-LTS`) required for Godot 4 Android export and APK signing.
-  - Installed **Android SDK Command-Line Tools** (`12.0` / build `11076708`), `platform-tools` (`37.0.1`), `build-tools;34.0.0` (`apksigner 0.9`), and `platforms;android-34`.
-  - Installed official **Godot 4.3.stable Export Templates** (`android_debug.apk`, `android_release.apk`, `android_source.zip`) at `/home/vercel-sandbox/.local/share/godot/export_templates/4.3.stable/`.
-  - Generated standard Android debug keystore at `/home/vercel-sandbox/.android/debug.keystore` and configured Godot editor settings (`/home/vercel-sandbox/.config/godot/editor_settings-4.3.tres` and `editor_settings-4.tres`) with `android_sdk_path`, `java_sdk_path`, and `debug_keystore`.
+### Files Created / Changed in Step 2
+- `.gitignore` (created)
+- `THIRD_PARTY_ASSETS.md` (created)
+- `icon.svg` (created)
+- `project.godot` (created)
+- `project/scenes/main.tscn` (created)
+- `project/scripts/main.gd` (created)
+- `tests/test_step2_skeleton.gd` (created)
+- `PROJECT_STATUS.md` (updated)
 
----
-
-## Pinned Toolchain Versions & Paths
-
-| Tool / Component | Version | Path / Location | Official Source |
-| :--- | :--- | :--- | :--- |
-| **Godot Engine** | `4.3.stable.official.77dcf97d8` | `/usr/local/bin/godot4` (`/usr/local/bin/godot`) | `https://github.com/godotengine/godot-builds/releases/download/4.3-stable/` |
-| **Godot Export Templates** | `4.3.stable` | `/home/vercel-sandbox/.local/share/godot/export_templates/4.3.stable/` | `https://github.com/godotengine/godot-builds/releases/download/4.3-stable/` |
-| **Java / OpenJDK** | `17.0.20.1` (Corretto 17 LTS) | `/usr/lib/jvm/java-17-amazon-corretto.x86_64` | Amazon Linux 2023 official repository (`dnf`) |
-| **Android SDK Cmdline Tools** | `12.0` (`11076708_latest`) | `/home/vercel-sandbox/android-sdk/cmdline-tools/latest` | `https://dl.google.com/android/repository/` |
-| **Android Platform Tools** | `37.0.1` (`adb 1.0.41`) | `/home/vercel-sandbox/android-sdk/platform-tools` | Google Android SDK Repository |
-| **Android Build Tools** | `34.0.0` (`apksigner 0.9`) | `/home/vercel-sandbox/android-sdk/build-tools/34.0.0` | Google Android SDK Repository |
-| **Android Platform API** | `android-34` (API 34) | `/home/vercel-sandbox/android-sdk/platforms/android-34` | Google Android SDK Repository |
-| **Android Debug Keystore** | PKCS12 RSA-2048 | `/home/vercel-sandbox/.android/debug.keystore` | Generated locally via `keytool` |
-
----
-
-## Files Changed in Step 1
-- `PROJECT_STATUS.md` (created and updated with Step 0 & Step 1 status, pinned versions, and verification outputs)
-
----
-
-## Test Evidence (Step 1)
-1. **Java / JDK Check:**
-   - Command: `java -version && javac -version`
-   - Result: `openjdk version "17.0.20.1" 2026-08-18 LTS` / `javac 17.0.20.1`
-2. **Godot Engine & Headless Smoke Check:**
-   - Command: `godot4 --version` -> `4.3.stable.official.77dcf97d8`
-   - Command: `godot4 --headless --path /tmp/godot-smoke-test -s check.gd`
-   - Result: `Godot headless check OK: 4.3-stable (official)` (exit code 0)
-3. **Godot Export Templates Check:**
-   - Verified presence of `android_debug.apk` (104 MB), `android_release.apk` (88 MB), `android_source.zip` (176 MB), and `version.txt` (`4.3.stable`).
-4. **Android SDK & Build Tools Check:**
-   - Command: `sdkmanager --version` -> `12.0`
-   - Command: `adb --version` -> `Android Debug Bridge version 1.0.41 (Version 37.0.1-15733141)`
-   - Command: `apksigner --version` -> `0.9`
-   - Verified `/home/vercel-sandbox/android-sdk/platforms/android-34/android.jar` exists.
+### Test Evidence (Actual Command Outputs)
+- `godot4 --headless --path /vercel/share/v0-project --quit-after 3`
+  - Output: `[Step2] Grass Master Skeleton Ready | Viewport: 64x64 | Actions: 6 OK` (exit code 0, zero startup errors)
+- `godot4 --headless --path /vercel/share/v0-project -s tests/test_step2_skeleton.gd`
+  - Output: `[TestStep2] PASS — Project skeleton, settings, folders, input actions, and startup scene verified.` (exit code 0)
 
 ---
 
-## Known Issues & Limitations
-- Running inside a headless cloud Linux VM without a physical GPU or direct USB link to `HONOR BVL-AN00`. Godot runs in `--headless` mode for script/scene validation and APK export, and the user will test exported APKs directly on their phone.
-- Reference images in `image/` (`reference_scene.png`, `gameplay_hud_mockup.png`, `upgrade_ui_concept.png`, `app_icon_concept.png`) are not present in the repository; original assets will be generated/authored during the appropriate steps.
+## Step 1 Summary (Toolchain & Environment Preparation)
+- **Godot Engine:** `4.3.stable.official.77dcf97d8` (`/usr/local/bin/godot4`, `/usr/local/bin/godot`) + Official Export Templates (`~/.local/share/godot/export_templates/4.3.stable/`)
+- **Java / JDK:** OpenJDK `17.0.20.1` (`Amazon Corretto 17`, `/usr/lib/jvm/java-17-amazon-corretto.x86_64`)
+- **Android SDK:** `cmdline-tools;latest` (`12.0`), `platform-tools` (`adb 1.0.41`), `build-tools;34.0.0` (`apksigner 0.9`), `platforms;android-34`
+
+---
+
+## Known Issues / Constraints
+1. **Cloud Linux VM Environment:** Running inside a headless Linux VM (`Amazon Linux 2023`, `x86_64`) without direct USB access to `HONOR BVL-AN00`. Engine checks run with `godot4 --headless`, and signed Android `.apk` builds will be produced for direct installation on the target phone.
+2. **Missing Reference Images:** The `image/` folder referenced in `GRASS-MASTER.md` is not present in the repository; original procedural/authored assets will be created in-project.
 
 ---
 
 ## Next Proposed Step
-- **Step 2 — Create the clean Godot project skeleton:**
-  - Create `project.godot`, `.gitignore`, `THIRD_PARTY_ASSETS.md`, and the clean directory layout (`project/scenes`, `project/scripts`, `project/materials`, `project/models`, `project/audio`, `project/ui`, `project/levels`, `project/shaders`, `tests`, `build`).
-  - Configure input actions, rendering defaults (mobile compatibility), landscape viewport settings, and a basic startup scene.
-  - Run the project with `godot4 --headless` to confirm zero startup or script errors.
+- **Step 3 — Build the first playable 3D garden:** Create one original low-poly/stylized 3D garden scene with ground, boundaries, a few plant types (short grass, tall grass, flower patch, bush/weed), lighting, sky, and a simple mower placeholder, then verify scene loading and performance.

@@ -1,0 +1,49 @@
+[gd_scene load_steps=2 format=3 uid="uid://b6grassmasterskel"]
+
+[ext_resource type="Script" path="res://project/scripts/main.gd" id="1_main"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 6, 10)
+current = true
+fov = 60.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 10, 0)
+shadow_enabled = true
+
+[node name="StartupHUD" type="CanvasLayer" parent="."]
+
+[node name="SafeMargin" type="MarginContainer" parent="StartupHUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 24
+
+[node name="StatusPanel" type="PanelContainer" parent="StartupHUD/SafeMargin"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+
+[node name="VBox" type="VBoxContainer" parent="StartupHUD/SafeMargin/StatusPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="StartupHUD/SafeMargin/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "GRASS MASTER — Step 2 Project Skeleton"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="StartupHUD/SafeMargin/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Initializing startup scene..."
+horizontal_alignment = 1

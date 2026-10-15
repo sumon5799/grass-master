@@ -1,0 +1,12 @@
+# Godot 4+ cache and import files
+.godot/
+
+# Exported Android binaries and temporary build outputs
+build/*.apk
+build/*.aab
+build/*.idsig
+
+# Temporary OS / editor files
+.DS_Store
+Thumbs.db
+*.tmp
