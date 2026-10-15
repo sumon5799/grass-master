@@ -78,6 +78,13 @@ static func _create_material(key: String) -> StandardMaterial3D:
 			mat.albedo_color = Color(0.78, 0.84, 0.88)
 			mat.roughness = 0.30
 			mat.metallic = 0.65
+		"mower_blade_ring_active":
+			mat.albedo_color = Color(0.42, 0.98, 0.48)
+			mat.roughness = 0.25
+			mat.metallic = 0.35
+		"clipping_particle":
+			mat.albedo_color = Color(0.45, 0.88, 0.32)
+			mat.roughness = 0.65
 		_:
 			mat.albedo_color = Color(0.5, 0.5, 0.5)
 	return mat

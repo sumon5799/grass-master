@@ -1,10 +1,10 @@
 extends CharacterBody3D
 class_name MowerPlaceholder
 
-## Step 4 — Playable 3D Lawnmower Controller & Visuals.
+## Step 4 & Step 5 — Playable 3D Lawnmower Controller & Visuals.
 ## Implements smooth analog/8-direction movement, smooth heading turn, boost,
 ## physics collision response against garden boundaries, wheel spin, subtle engine
-## vibration, and external touch joystick / swipe input hooks.
+## vibration, cutting radius configuration, and cut flash feedback.
 
 const GardenMaterialsScript := preload("res://project/materials/garden_materials.gd")
 
@@ -14,23 +14,23 @@ const GardenMaterialsScript := preload("res://project/materials/garden_materials
 @export var friction: float = 16.0
 @export var turn_speed: float = 10.5
 @export var collision_radius: float = 0.92
+@export var cutting_radius: float = 1.45
+@export var cutting_power: int = 3
 @export var arena_limit: float = 15.05
 
 var body_root: Node3D
-var cutter_indicator: MeshInstance3D
 var collision_shape: CollisionShape3D
+var cutter_indicator: MeshInstance3D
 var wheels: Array[MeshInstance3D] = []
 
-# External mobile touch/joystick input state
 var touch_input_vector: Vector2 = Vector2.ZERO
 var touch_boost_pressed: bool = false
-
-# Runtime telemetry for HUD and automated tests
-var current_speed: float = 0.0
 var is_boosting: bool = false
+var current_speed: float = 0.0
 var last_input_vector: Vector2 = Vector2.ZERO
 var boundary_hit_count: int = 0
 var _vibration_time: float = 0.0
+var _cut_flash_timer: float = 0.0
 
 func _ready() -> void:
 	name = "MowerPlaceholder"
@@ -250,5 +250,21 @@ func _animate_mower_visuals(delta: float) -> void:
 
 	if cutter_indicator:
 		cutter_indicator.rotate_y(delta * (6.0 if is_boosting else 3.2))
-		var ring_scale := 1.06 if is_boosting else 1.0
+		if _cut_flash_timer > 0.0:
+			_cut_flash_timer = maxf(0.0, _cut_flash_timer - delta)
+			if _cut_flash_timer <= 0.0:
+				cutter_indicator.material_override = GardenMaterialsScript.get_material("mower_blade_ring")
+		var ring_scale := 1.12 if _cut_flash_timer > 0.0 else (1.06 if is_boosting else 1.0)
 		cutter_indicator.scale = Vector3(ring_scale, 1.0, ring_scale)
+
+	if current_speed > 0.05:
+		var wheel_spin := delta * current_speed * 4.2
+		for wheel in wheels:
+			if wheel:
+				wheel.rotate_x(-wheel_spin)
+
+func notify_cut_feedback() -> void:
+	_cut_flash_timer = 0.18
+	if cutter_indicator:
+		cutter_indicator.material_override = GardenMaterialsScript.get_material("mower_blade_ring_active")
+		cutter_indicator.scale = Vector3(1.12, 1.0, 1.12)
