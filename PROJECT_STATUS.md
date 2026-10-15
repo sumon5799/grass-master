@@ -1,74 +1,45 @@
-# PROJECT_STATUS.md — Grass Master
+# Grass Master — Project Status
 
-## Current Status
-- **Completed Step:** Step 2 — Create the clean Godot project skeleton
-- **Next Proposed Step:** Step 3 — Build the first playable 3D garden (awaiting explicit user approval)
-- **Working Branch:** `v0/grass-master-dev`
-
----
-
-## Step 2 Summary (Clean Godot Project Skeleton)
-
-### Decisions & Configuration
-1. **Project Configuration (`project.godot`):**
-   - `config_version=5` (Godot 4.3)
-   - `application/config/name="Grass Master"`
-   - `application/run/main_scene="res://project/scenes/main.tscn"`
-   - **Viewport & Orientation:** `1280x720` landscape (`window/handheld/orientation=0`), `window/stretch/mode="canvas_items"`, `window/stretch/aspect="expand"` for responsive mobile safe areas and multi-aspect-ratio screens.
-   - **Rendering Defaults:** `mobile` renderer (`renderer/rendering_method="mobile"`), ETC2/ASTC texture compression enabled (`import_etc2_astc=true`), 3D MSAA 2x (`msaa_3d=1`), and mouse-to-touch emulation enabled (`emulate_touch_from_mouse=true`).
-2. **Input Actions Configured:**
-   - `move_forward` (`W`, `Up`)
-   - `move_backward` (`S`, `Down`)
-   - `turn_left` (`A`, `Left`)
-   - `turn_right` (`D`, `Right`)
-   - `boost` (`Space`)
-   - `pause` (`Escape`)
-3. **Directory Structure Created:**
-   - `project/scenes/`
-   - `project/scripts/`
-   - `project/materials/`
-   - `project/models/`
-   - `project/audio/`
-   - `project/ui/`
-   - `project/levels/`
-   - `project/shaders/`
-   - `tests/`
-   - `build/`
-4. **Startup Scene & Asset Tracking:**
-   - Created `project/scenes/main.tscn` and `project/scripts/main.gd` with a basic `Node3D`, `Camera3D`, `DirectionalLight3D`, and `StartupHUD` (`CanvasLayer` + safe margin container).
-   - Created `THIRD_PARTY_ASSETS.md` to track any external assets and licenses.
-   - Created `.gitignore` for `.godot/` cache and temporary build artifacts.
-
-### Files Created / Changed in Step 2
-- `.gitignore` (created)
-- `THIRD_PARTY_ASSETS.md` (created)
-- `icon.svg` (created)
-- `project.godot` (created)
-- `project/scenes/main.tscn` (created)
-- `project/scripts/main.gd` (created)
-- `tests/test_step2_skeleton.gd` (created)
-- `PROJECT_STATUS.md` (updated)
-
-### Test Evidence (Actual Command Outputs)
-- `godot4 --headless --path /vercel/share/v0-project --quit-after 3`
-  - Output: `[Step2] Grass Master Skeleton Ready | Viewport: 64x64 | Actions: 6 OK` (exit code 0, zero startup errors)
-- `godot4 --headless --path /vercel/share/v0-project -s tests/test_step2_skeleton.gd`
-  - Output: `[TestStep2] PASS — Project skeleton, settings, folders, input actions, and startup scene verified.` (exit code 0)
+## Current Step
+- **Completed:** Step 0, Step 1, Step 2, Step 3
+- **Awaiting Approval:** Step 4 (Mower controls and camera)
 
 ---
 
-## Step 1 Summary (Toolchain & Environment Preparation)
-- **Godot Engine:** `4.3.stable.official.77dcf97d8` (`/usr/local/bin/godot4`, `/usr/local/bin/godot`) + Official Export Templates (`~/.local/share/godot/export_templates/4.3.stable/`)
-- **Java / JDK:** OpenJDK `17.0.20.1` (`Amazon Corretto 17`, `/usr/lib/jvm/java-17-amazon-corretto.x86_64`)
-- **Android SDK:** `cmdline-tools;latest` (`12.0`), `platform-tools` (`adb 1.0.41`), `build-tools;34.0.0` (`apksigner 0.9`), `platforms;android-34`
+## Step 0 Summary (Completed)
+- Performed read-only inspection of `/vercel/share/v0-project` (`sumon5799/grass-master`, branch `main`).
+- Checked system resources: Amazon Linux 2023.12 (`x86_64`), 4 vCPU, 8.2 GiB RAM, 62 GB free disk space.
+- Verified official download endpoints (`godotengine.org`, `github.com/godotengine/godot-builds`, `dl.google.com`, `api.adoptium.net`).
 
 ---
 
-## Known Issues / Constraints
-1. **Cloud Linux VM Environment:** Running inside a headless Linux VM (`Amazon Linux 2023`, `x86_64`) without direct USB access to `HONOR BVL-AN00`. Engine checks run with `godot4 --headless`, and signed Android `.apk` builds will be produced for direct installation on the target phone.
-2. **Missing Reference Images:** The `image/` folder referenced in `GRASS-MASTER.md` is not present in the repository; original procedural/authored assets will be created in-project.
+## Step 1 Summary (Completed)
+- **OpenJDK 17:** Installed Amazon Corretto 17 (`17.0.20.1`).
+- **Godot 4.3 Stable:** Installed `Godot_v4.3-stable_linux.x86_64` and official `4.3.stable` export templates.
+- **Android SDK:** Installed `cmdline-tools;latest`, `platform-tools`, `build-tools;34.0.0`, and `platforms;android-34`, plus debug keystore and Godot Android export paths.
 
 ---
 
-## Next Proposed Step
-- **Step 3 — Build the first playable 3D garden:** Create one original low-poly/stylized 3D garden scene with ground, boundaries, a few plant types (short grass, tall grass, flower patch, bush/weed), lighting, sky, and a simple mower placeholder, then verify scene loading and performance.
+## Step 2 Summary (Completed)
+- Created `project.godot` with landscape orientation, `1280x720` viewport, mobile renderer, input actions (`move_forward`, `move_backward`, `turn_left`, `turn_right`, `boost`, `pause`), and touch-from-mouse emulation.
+- Created project directory layout (`project/scenes`, `project/scripts`, `project/materials`, `project/models`, `project/audio`, `project/ui`, `project/levels`, `project/shaders`, `tests`, `build`), `.gitignore`, `THIRD_PARTY_ASSETS.md`, `icon.svg`, and `tests/test_step2_skeleton.gd`.
+
+---
+
+## Step 3 Summary (Completed)
+- **Materials (`project/materials/garden_materials.gd`):** Created a shared stylized low-poly material library (`GardenMaterials`) for lawn soil, outer grass border, stone spawn pad, wooden fences, 5 vegetation palettes, and mower chassis/deck/wheel/ring materials.
+- **Mower Placeholder (`project/scripts/mower_placeholder.gd`):** Created `MowerPlaceholder` featuring a low-poly cutting deck, engine chassis, cap, rear handlebars, 4 wheels, and a cutter radius indicator ring.
+- **3D Garden Arena (`project/scripts/garden_arena.gd`):**
+  - Built `GroundBody` (`StaticBody3D` + lawn/border meshes + `GroundCollision` + center `SpawnStonePad`).
+  - Built `GardenBoundaries` (`StaticBody3D` with 4 physics walls `WallNorth`, `WallSouth`, `WallWest`, `WallEast` + wooden rails + `MultiMeshInstance3D` fence posts).
+  - Populated **387 plants across 5 distinct vegetation types** using deterministic layout and **7 `MultiMeshInstance3D` batches** for mobile performance:
+    - `short_grass`: 114
+    - `tall_grass`: 106
+    - `colorful_flowers` (pink, gold, blue): 57
+    - `small_shrubs`: 59
+    - `large_trim_plants` (conical topiary): 51
+- **Environment & Lighting (`project/scenes/main.tscn`, `project/scripts/main.gd`):**
+  - Configured `ProceduralSkyMaterial` + `Sky` + `WorldEnvironment` with sky ambient contribution and ACES tonemapping.
+  - Configured sunlit `DirectionalLight3D` (`SunLight3D`) and isometric `MainCamera3D` framing the mower and garden.
+- **Verification (`tests/test_step3_garden.gd` & `--verify-step3`):**
+  - Confirmed scene instantiation, sky/lighting/camera presence, all 4 boundary walls, mower placeholder, all 5 vegetation types (`387` total plants), and `MultiMeshInstance3D` batching (`7` batches).

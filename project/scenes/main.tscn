@@ -1,49 +1,75 @@
-[gd_scene load_steps=2 format=3 uid="uid://b6grassmasterskel"]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://project/scripts/main.gd" id="1_main"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_garden"]
+sky_top_color = Color(0.24, 0.58, 0.92, 1)
+sky_horizon_color = Color(0.68, 0.86, 0.96, 1)
+ground_bottom_color = Color(0.18, 0.36, 0.16, 1)
+ground_horizon_color = Color(0.52, 0.74, 0.56, 1)
+sun_angle_max = 35.0
+
+[sub_resource type="Sky" id="Sky_garden"]
+sky_material = SubResource("ProceduralSkyMaterial_garden")
+
+[sub_resource type="Environment" id="Environment_garden"]
+background_mode = 2
+sky = SubResource("Sky_garden")
+ambient_light_source = 3
+ambient_light_color = Color(0.75, 0.86, 0.78, 1)
+ambient_light_sky_contribution = 0.65
+ambient_light_energy = 0.95
+tonemap_mode = 2
+tonemap_exposure = 1.05
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 6, 10)
-current = true
-fov = 60.0
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_garden")
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 10, 0)
+[node name="SunLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, -0.40558, 0.40558, 0, 0.707107, 0.707107, -0.573576, -0.579228, 0.579228, 0, 18, 0)
+light_color = Color(1, 0.97, 0.88, 1)
+light_energy = 1.25
 shadow_enabled = true
+directional_shadow_mode = 0
+directional_shadow_max_distance = 45.0
+
+[node name="MainCamera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 13.5, 13)
+current = true
+fov = 50.0
+near = 0.1
+far = 120.0
 
 [node name="StartupHUD" type="CanvasLayer" parent="."]
 
 [node name="SafeMargin" type="MarginContainer" parent="StartupHUD"]
-anchors_preset = 15
+anchors_preset = 10
 anchor_right = 1.0
-anchor_bottom = 1.0
+offset_bottom = 84.0
 grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 24
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 12
 
-[node name="StatusPanel" type="PanelContainer" parent="StartupHUD/SafeMargin"]
+[node name="HeaderPanel" type="PanelContainer" parent="StartupHUD/SafeMargin"]
 layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
 
-[node name="VBox" type="VBoxContainer" parent="StartupHUD/SafeMargin/StatusPanel"]
+[node name="VBox" type="VBoxContainer" parent="StartupHUD/SafeMargin/HeaderPanel"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 2
 
-[node name="TitleLabel" type="Label" parent="StartupHUD/SafeMargin/StatusPanel/VBox"]
+[node name="TitleLabel" type="Label" parent="StartupHUD/SafeMargin/HeaderPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "GRASS MASTER — Step 2 Project Skeleton"
+theme_override_font_sizes/font_size = 22
+text = "GRASS MASTER — Stylized 3D Garden"
 horizontal_alignment = 1
 
-[node name="StatusLabel" type="Label" parent="StartupHUD/SafeMargin/StatusPanel/VBox"]
+[node name="StatusLabel" type="Label" parent="StartupHUD/SafeMargin/HeaderPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "Initializing startup scene..."
+theme_override_font_sizes/font_size = 14
+text = "Step 3: Loading 3D Garden..."
 horizontal_alignment = 1
